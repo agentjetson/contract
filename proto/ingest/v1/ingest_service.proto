@@ -5,6 +5,7 @@ package ingest.v1;
 option cc_enable_arenas = true;
 
 import "common/v1/error.proto";
+import "audio/v1/transcript.proto";
 import "detection/v1/detection.proto";
 
 service IngestService {
@@ -14,6 +15,16 @@ service IngestService {
   rpc IngestObject(IngestObjectRequest) returns (IngestObjectResponse);
   // Push specialist capability result
   rpc IngestResult(IngestResultRequest) returns (IngestResultResponse);
+  rpc IngestTranscript(IngestTranscriptRequest) returns (IngestTranscriptResponse);
+}
+
+message IngestTranscriptRequest {
+  audio.v1.Transcript transcript = 1;
+}
+message IngestTranscriptResponse {
+  bool   accepted   = 1;
+  string message_id = 2;
+  common.v1.DomainError error = 3;
 }
 
 message IngestAlertRequest {
