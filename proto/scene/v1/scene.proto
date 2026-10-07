@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package scene.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// SceneResult is the stable output of scene-router.
+// Downstream components (object-classifier gating, aggregator, specialists)
+// consume this; they do not care which vision backbone produced it.
+message SceneResult {
+  string frame_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string source = 3;               // camera id / file / rtsp
+
+  string level1 = 4;               // e.g. road_scene
+  string level2 = 5;               // e.g. traffic_stop
+  float  level1_confidence = 6;
+  float  level2_confidence = 7;
+
+  repeated string specialists = 8; // suggested capabilities to activate
+  map<string, float> scores = 9;   // optional full prompt / class scores
+
+  string backend = 10;             // "siglip2" | "dinov3" | "hybrid"
+  bool   temporal_requested = 11;  // true → hand to temporal-classifier
+  string notes = 12;
+}
+
+// Optional future: FrameEnvelope already lives in capture/v1; re-use if needed.
