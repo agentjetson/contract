@@ -76,8 +76,8 @@ services:
 
   object-storage:
     build:
-      context: .
-      dockerfile: docker/Dockerfile
+      context: ./object-storage
+      dockerfile: Dockerfile
     environment:
       DEMO_MODE: "false"
       CLICKHOUSE_ENABLED: "true"
@@ -100,7 +100,7 @@ services:
     networks:
       - core_net
 
-  query-service:
+  voice-query-service:
     build:
       context: ./query-service
       dockerfile: Dockerfile
