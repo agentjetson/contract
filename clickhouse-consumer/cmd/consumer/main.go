@@ -36,10 +36,14 @@ func decodeAlert(data []byte, seq uint64) ([]persistence.DetectionRow, error) {
 		}
 		dets = append(dets, df)
 	}
+	labels := a.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
 	return mapx.AlertToRows(mapx.AlertFields{
 		FrameID: a.GetFrameId(), Timestamp: a.GetTimestamp(), Source: a.GetSource(),
 		WatchlistHit: a.GetWatchlistHit(), MatchedLabel: a.GetMatchedLabel(),
-		E2ELatencyMs: a.GetE2ELatencyMs(), Detections: dets,
+		E2ELatencyMs: a.GetE2ELatencyMs(), Labels: labels, Detections: dets,
 	}, seq), nil
 }
 
@@ -48,11 +52,15 @@ func decodeTranscript(data []byte, seq uint64) (persistence.TranscriptRow, error
 	if err := proto.Unmarshal(data, &t); err != nil {
 		return persistence.TranscriptRow{}, err
 	}
+	labels := t.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
 	return mapx.TranscriptToRow(mapx.TranscriptFields{
 		Timestamp: t.GetTimestamp(), AudioStart: t.GetAudioStart(), AudioEnd: t.GetAudioEnd(),
 		Source: t.GetSource(), Text: t.GetText(), IsFinal: t.GetIsFinal(),
 		Confidence: t.GetConfidence(), Language: t.GetLanguage(), SpeakerID: t.GetSpeakerId(),
-		E2ELatencyMs: t.GetE2ELatencyMs(),
+		E2ELatencyMs: t.GetE2ELatencyMs(), Labels: labels,
 	}, seq), nil
 }
 
@@ -70,7 +78,6 @@ func decodeObject(data []byte, seq uint64) (persistence.ObjectRow, error) {
 		ClassName: o.GetClassName(), ClassID: o.GetClassId(), Confidence: o.GetConfidence(),
 		TrackID: o.GetTrackId(), FrameWidth: o.GetFrameWidth(), FrameHeight: o.GetFrameHeight(),
 		CaptureLatencyMs: o.GetCaptureLatencyMs(), Labels: labels,
-		SceneL1: labels["scene_l1"], SceneL2: labels["scene_l2"],
 	}
 	if b := o.GetBox(); b != nil {
 		of.X1, of.Y1, of.X2, of.Y2 = b.GetX1(), b.GetY1(), b.GetX2(), b.GetY2()
@@ -96,7 +103,6 @@ func decodeResult(data []byte, seq uint64) (persistence.ResultRow, error) {
 		Capability: r.GetCapability(), TrackID: r.GetTrackId(), ClassName: r.GetClassName(),
 		OCRText: r.GetOcrText(), OCRConfidence: r.GetOcrConfidence(),
 		ProcessingMs: r.GetProcessingMs(), Attributes: attrs, Labels: labels,
-		SceneL1: labels["scene_l1"], SceneL2: labels["scene_l2"],
 	}
 	if b := r.GetBox(); b != nil {
 		rf.X1, rf.Y1, rf.X2, rf.Y2 = b.GetX1(), b.GetY1(), b.GetX2(), b.GetY2()
@@ -177,12 +183,13 @@ func main() {
 	defer stop()
 
 	var (
-		objBatch  []persistence.ObjectRow
-		resBatch  []persistence.ResultRow
-		scnBatch  []persistence.SceneRow
-		detBatch  []persistence.DetectionRow
-		trBatch   []persistence.TranscriptRow
-		lastFlush = time.Now()
+		objBatch   []persistence.ObjectRow
+		resBatch   []persistence.ResultRow
+		scnBatch   []persistence.SceneRow
+		detBatch   []persistence.DetectionRow
+		trBatch    []persistence.TranscriptRow
+		pendingAck []*nats.Msg
+		lastFlush  = time.Now()
 	)
 	reserve := cfg.FlushSize * 2
 	objBatch = make([]persistence.ObjectRow, 0, reserve)
@@ -190,10 +197,25 @@ func main() {
 	scnBatch = make([]persistence.SceneRow, 0, reserve)
 	detBatch = make([]persistence.DetectionRow, 0, reserve)
 	trBatch = make([]persistence.TranscriptRow, 0, reserve)
+	pendingAck = make([]*nats.Msg, 0, reserve*2)
+
+	clearBatches := func() {
+		objBatch = objBatch[:0]
+		resBatch = resBatch[:0]
+		scnBatch = scnBatch[:0]
+		detBatch = detBatch[:0]
+		trBatch = trBatch[:0]
+		pendingAck = pendingAck[:0]
+	}
 
 	flush := func() {
+		pending := len(objBatch) + len(resBatch) + len(scnBatch) + len(detBatch) + len(trBatch)
+		if pending == 0 {
+			return
+		}
 		fctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+
 		type job struct {
 			name string
 			n    int
@@ -206,21 +228,33 @@ func main() {
 			{"cv_detections", len(detBatch), func() error { return ch.InsertDetections(fctx, detBatch) }},
 			{"audio_transcripts", len(trBatch), func() error { return ch.InsertTranscripts(fctx, trBatch) }},
 		}
+
+		failed := false
 		for _, j := range jobs {
 			if j.n == 0 {
 				continue
 			}
 			if err := j.fn(); err != nil {
 				slog.Error("insert", "table", j.name, "err", err, "n", j.n)
+				failed = true
 			} else {
 				slog.Info("inserted", "table", j.name, "n", j.n)
 			}
 		}
-		objBatch = objBatch[:0]
-		resBatch = resBatch[:0]
-		scnBatch = scnBatch[:0]
-		detBatch = detBatch[:0]
-		trBatch = trBatch[:0]
+
+		if failed {
+			// Re-deliver so nothing is silently dropped.
+			for _, m := range pendingAck {
+				_ = m.Nak()
+			}
+			clearBatches()
+			lastFlush = time.Now()
+			return
+		}
+		for _, m := range pendingAck {
+			_ = m.Ack()
+		}
+		clearBatches()
 		lastFlush = time.Now()
 	}
 
@@ -231,46 +265,51 @@ func main() {
 			rows, err := decodeAlert(msg.Data, seq)
 			if err != nil {
 				slog.Warn("decode Alert", "err", err, "bytes", len(msg.Data))
-			} else {
-				detBatch = append(detBatch, rows...)
+				_ = msg.Ack() // poison pill
+				return
 			}
-			_ = msg.Ack()
+			detBatch = append(detBatch, rows...)
+			pendingAck = append(pendingAck, msg)
 
 		case subject == "audio.transcript" || strings.HasPrefix(subject, "audio.transcript"):
 			row, err := decodeTranscript(msg.Data, seq)
 			if err != nil {
 				slog.Warn("decode Transcript", "err", err)
-			} else {
-				trBatch = append(trBatch, row)
+				_ = msg.Ack()
+				return
 			}
-			_ = msg.Ack()
+			trBatch = append(trBatch, row)
+			pendingAck = append(pendingAck, msg)
 
 		case strings.HasPrefix(subject, "cv.object."):
 			row, err := decodeObject(msg.Data, seq)
 			if err != nil {
 				slog.Warn("decode ObjectEnvelope", "err", err)
-			} else {
-				objBatch = append(objBatch, row)
+				_ = msg.Ack()
+				return
 			}
-			_ = msg.Ack()
+			objBatch = append(objBatch, row)
+			pendingAck = append(pendingAck, msg)
 
 		case strings.HasPrefix(subject, "cv.result."):
 			row, err := decodeResult(msg.Data, seq)
 			if err != nil {
 				slog.Warn("decode CapabilityResult", "err", err)
-			} else {
-				resBatch = append(resBatch, row)
+				_ = msg.Ack()
+				return
 			}
-			_ = msg.Ack()
+			resBatch = append(resBatch, row)
+			pendingAck = append(pendingAck, msg)
 
 		case strings.HasPrefix(subject, "cv.scene."):
 			row, err := decodeScene(msg.Data, seq)
 			if err != nil {
 				slog.Warn("decode SceneResult", "err", err)
-			} else {
-				scnBatch = append(scnBatch, row)
+				_ = msg.Ack()
+				return
 			}
-			_ = msg.Ack()
+			scnBatch = append(scnBatch, row)
+			pendingAck = append(pendingAck, msg)
 
 		default:
 			slog.Debug("unhandled subject", "subject", subject)
