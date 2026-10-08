@@ -8,8 +8,6 @@ This document is the single source of truth for how the AgentJetson edge CV + au
 
 **Scene routing backends:** SigLIP 2 / DINOv3 (visual) + MoViNet (temporal) — see [scene-router](https://github.com/agentjetson/scene-router) and [temporal-classifier](https://github.com/agentjetson/temporal-classifier).
 
-**Voice path (unified monorepo):** [agentjetson/voice](https://github.com/agentjetson/voice) — merges the former `audio-client`, `voice-agent`, and `voice-query-service` into one tree with shared models, compose, and contracts.
-
 **This repo owns the contracts.** `.proto` files, ClickHouse DDL, NATS subject map, and scene taxonomy live here. Other repos consume; they do not keep a private copy. The Go query service stays a **separate repo** (`voice-query-service`) — it generates stubs from these protos and reads the `query_*` views. ClickHouse is an interchangeable adapter: `make up` in this repo spins it up with no dependency on core.
 
 See [`CONSUMING.md`](CONSUMING.md), [`seed/README.md`](seed/README.md), [`seed/WRITE_SPEC.md`](seed/WRITE_SPEC.md).
