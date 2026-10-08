@@ -3,11 +3,14 @@ module github.com/agentjetson/object-storage
 go 1.22
 
 require (
+	github.com/agentjetson/contract/pkg/persistence v0.0.0
 	github.com/google/uuid v1.6.0
 	github.com/minio/minio-go/v7 v7.0.80
 	google.golang.org/grpc v1.67.1
 	google.golang.org/protobuf v1.35.1
 )
+
+replace github.com/agentjetson/contract/pkg/persistence => ../pkg/persistence
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

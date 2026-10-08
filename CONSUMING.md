@@ -1,28 +1,44 @@
 # Consuming this repo
 
-Protos and ClickHouse schema live **only** here. Other repos vendor or generate;
-they do not keep a private copy that can drift.
+Protos, ClickHouse schema, NATS subject map, and the **in-tree Go scaffolding**
+for query-service + object-storage live **only** here. Other repos vendor or
+generate; they do not keep a private copy that can drift.
 
-## voice-query-service (Go) — stays a separate repo
+## query-service (Go) — scaffolding in this repo
 
-Agreed. The service is Go; this repo is language-agnostic contracts.
+The HTTP + MCP read path lives under `query-service/`. Contracts (`voice.v1`)
+are the source of truth in `proto/voice/`.
 
-What changes:
+What consumers / the production voice-query-service must do:
 
-1. Delete `query-service/proto/**` (and the duplicate in `voice/query-service/proto`).
-2. Point Buf at this module:
+1. Do **not** keep a private `proto/` tree. Point Buf at this module:
 
    ```yaml
-   # voice-query-service/buf.yaml
+   # voice-query-service/buf.yaml (or any external consumer)
    version: v2
    deps:
-     - buf.build/agentjetson/contract   # or git submodule proto/
+     - buf.build/agentjetson/contract   # or git submodule / go module of proto/
    ```
 
-3. Delete `ApplySchema` in `internal/clickhouse`. Schema is `make schema` here.
-4. Point SELECTs at the `query_*` views (`seed/sql/003_views.sql`).
+2. Delete any local `ApplySchema` in ClickHouse clients. Schema is applied only
+   via `make schema` here (`seed/sql/`).
 
-HTTP `/v1/query/*` and MCP stay in the Go repo. Contracts (`voice.v1`) live here.
+3. Point SELECTs at the `query_*` views (`seed/sql/003_views.sql`). Prefer the
+   shared client in `pkg/persistence` (`Conn()` for reads; never CREATE TABLE).
+
+4. The in-tree `query-service/` is demo/scaffolding aligned to these contracts.
+   Production deployments may still run a dedicated binary; they must consume
+   protos and schema from this repo.
+
+## object-storage (Go) — scaffolding in this repo
+
+`object-storage/` implements the `storage.v1.ObjectStorageService` surface
+(HTTP today; gRPC once `make generate` stubs are wired). After a successful
+Put it should write an `object_meta` row via `pkg/persistence.InsertObjectMeta`
+so query-service and ClickHouse can join blobs back to `cv.object.*` /
+`cv.scene.*` / transcripts.
+
+Do not invent a second metadata schema.
 
 ## core (C++)
 
@@ -49,6 +65,16 @@ HTTP `/v1/query/*` and MCP stay in the Go repo. Contracts (`voice.v1`) live here
 | voice/agent          | HTTP to query-service; optional `voice.v1`   |
 
 `frame_id` is `int64` everywhere, including `SceneResult` (was `string`).
+
+## Shared Go packages in this repo
+
+| Package | Purpose | Used by |
+|---------|---------|---------|
+| `pkg/persistence` | ClickHouse native client + typed insert helpers. **No DDL.** | clickhouse-consumer, object-storage (`InsertObjectMeta`), query-service (`Conn()` + SELECTs) |
+| `pkg/natsjs` | JetStream connect / stream wait / pull consumers | nats-publisher, clickhouse-consumer, aggregator |
+
+External Go services should `replace` or depend on these modules rather than
+re-implementing connection logic.
 
 ## Buf generate (this repo)
 

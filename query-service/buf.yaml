@@ -1,14 +1,14 @@
+# Scaffolding only. Prefer generating against the root module:
+#   deps: [buf.build/agentjetson/contract]
+# or run `make generate` from the contract root.
 version: v2
-
 modules:
-  - path: proto
-
+  - path: ../proto
 lint:
   use:
     - STANDARD
   except:
     - PACKAGE_DIRECTORY_MATCH
-
 breaking:
   use:
     - FILE
