@@ -107,8 +107,12 @@ export S3_ACCESS_KEY=minioadmin
 export S3_SECRET_KEY=minioadmin
 export S3_BUCKET=agentjetson
 export S3_USE_SSL=false
-export CLICKHOUSE_ENABLED=true   # when CH writer is wired
-export CLICKHOUSE_DSN=clickhouse://default:pass@localhost:9000/default
+export CLICKHOUSE_ENABLED=true
+export CLICKHOUSE_HOST=localhost
+export CLICKHOUSE_PORT=9000
+export CLICKHOUSE_USER=default
+export CLICKHOUSE_PASSWORD=pass
+export CLICKHOUSE_DB=default
 go run ./cmd/server
 ```
 
@@ -145,8 +149,14 @@ docker compose -f docker-compose.yml -f docker-compose.core.yml up -d
 | `FS_ROOT` | `./data` | Used when backend=filesystem |
 | `GRPC_ADDR` | `0.0.0.0:50055` | Reserved for generated gRPC server |
 | `HTTP_ADDR` | `0.0.0.0:8081` | Demo / integration HTTP surface |
-| `CLICKHOUSE_ENABLED` | `false` | Wire when core writers exist |
-| `CLICKHOUSE_DSN` | `clickhouse://default:pass@localhost:9000/default` | |
+| `CLICKHOUSE_ENABLED` | `false` | When true (and not DEMO_MODE), metadata uses `pkg/persistence` → `object_meta` |
+| `CLICKHOUSE_HOST` | `localhost` | Native protocol host |
+| `CLICKHOUSE_PORT` | `9000` | Native protocol port |
+| `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD` | `default` / `pass` | |
+| `CLICKHOUSE_DB` | `default` | Also accepts `CLICKHOUSE_DATABASE` |
+| `CLICKHOUSE_DSN` | (optional) | Docs/compose alias; discrete vars above are what Open() uses |
+
+After every successful Put, the service calls `InsertObjectMeta`. Get / List / MarkDeleted hit the same `object_meta` table (schema from `make schema`). DEMO_MODE keeps `MemoryStore` only.
 
 ---
 

@@ -1,9 +1,17 @@
+# Build from monorepo root:
+#   docker build -f object-storage/Dockerfile -t object-storage .
 FROM golang:1.22-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git ca-certificates
-COPY go.mod ./
-RUN go mod download 2>/dev/null || true
-COPY . .
+
+# Shared persistence module first (replace path in go.mod points here).
+COPY pkg/persistence ./pkg/persistence
+
+COPY object-storage/go.mod object-storage/go.sum ./object-storage/
+WORKDIR /src/object-storage
+RUN go mod download
+
+COPY object-storage/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/object-storage ./cmd/server
 
 FROM alpine:3.20

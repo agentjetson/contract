@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/agentjetson/contract/pkg/persistence"
 	"github.com/agentjetson/object-storage/internal/config"
 	"github.com/agentjetson/object-storage/internal/metadata"
 	"github.com/agentjetson/object-storage/internal/server"
@@ -21,7 +22,8 @@ import (
 
 func main() {
 	cfg := config.FromEnv()
-	log.Printf("object-storage starting backend=%s demo=%v addr=%s", cfg.Backend, cfg.DemoMode, cfg.GRPCAddr)
+	log.Printf("object-storage starting backend=%s demo=%v ch=%v addr=%s",
+		cfg.Backend, cfg.DemoMode, cfg.ClickHouseEnabled, cfg.GRPCAddr)
 
 	backend, err := buildBackend(cfg)
 	if err != nil {
@@ -32,7 +34,9 @@ func main() {
 		log.Fatalf("ensure bucket: %v", err)
 	}
 
-	meta := metadata.NewMemoryStore()
+	meta, chClose := buildMetaStore(cfg)
+	defer chClose()
+
 	svc := server.New(backend, meta, cfg.Bucket)
 
 	// Lightweight HTTP surface for health + simple put/get demos.
@@ -120,6 +124,31 @@ func buildBackend(cfg config.Config) (storage.Backend, error) {
 	default:
 		return nil, fmt.Errorf("unknown STORAGE_BACKEND %q", cfg.Backend)
 	}
+}
+
+// buildMetaStore returns MemoryStore in DEMO_MODE (or when CH is disabled).
+// When CLICKHOUSE_ENABLED=true it opens pkg/persistence and returns ClickHouseStore.
+// The returned closer must be deferred by main.
+func buildMetaStore(cfg config.Config) (metadata.Store, func()) {
+	noop := func() {}
+	if cfg.DemoMode || !cfg.ClickHouseEnabled {
+		log.Printf("metadata store: MemoryStore (demo=%v ch_enabled=%v)", cfg.DemoMode, cfg.ClickHouseEnabled)
+		return metadata.NewMemoryStore(), noop
+	}
+
+	ch, err := persistence.Open(persistence.Config{
+		Host:     cfg.ClickHouseHost,
+		Port:     cfg.ClickHousePort,
+		User:     cfg.ClickHouseUser,
+		Password: cfg.ClickHousePassword,
+		Database: cfg.ClickHouseDB,
+	})
+	if err != nil {
+		log.Fatalf("clickhouse open: %v", err)
+	}
+	log.Printf("metadata store: ClickHouseStore host=%s:%d db=%s",
+		cfg.ClickHouseHost, cfg.ClickHousePort, cfg.ClickHouseDB)
+	return metadata.NewClickHouseStore(ch), func() { _ = ch.Close() }
 }
 
 // ---------------------------------------------------------------------------

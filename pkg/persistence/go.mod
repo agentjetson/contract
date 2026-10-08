@@ -2,9 +2,7 @@ module github.com/agentjetson/contract/pkg/persistence
 
 go 1.22
 
-require (
-	github.com/ClickHouse/clickhouse-go/v2 v2.30.0
-)
+require github.com/ClickHouse/clickhouse-go/v2 v2.30.0
 
 require (
 	github.com/ClickHouse/ch-go v0.61.5 // indirect
