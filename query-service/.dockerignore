@@ -1,0 +1,6 @@
+.git/
+*.onnx
+*.mp4
+*.avi
+.vscode/
+.idea/

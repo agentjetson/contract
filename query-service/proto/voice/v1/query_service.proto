@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package voice.v1;
+
+option go_package = "github.com/agentjetson/voice-query-service/gen/voice/v1;voicev1";
+
+import "voice/v1/query.proto";
+import "common/v1/error.proto";
+
+// Optional gRPC surface. The primary path remains HTTP + MCP for the
+// C++ voice_agent (libcurl). This service definition keeps the contracts
+// versionable and ready for future gRPC clients.
+service VoiceQueryService {
+  rpc QueryRecentPlates(QueryRecentPlatesRequest) returns (QueryRecentPlatesResponse);
+  rpc QueryObjects(QueryObjectsRequest) returns (QueryObjectsResponse);
+  rpc QueryScenes(QueryScenesRequest) returns (QueryScenesResponse);
+  rpc QueryDetections(QueryDetectionsRequest) returns (QueryDetectionsResponse);
+  rpc QueryTranscripts(QueryTranscriptsRequest) returns (QueryTranscriptsResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}

@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/agentjetson/voice-query-service/gen/common/v1;commonv1";
+
+// DomainError is the shared error shape used across AgentJetson services.
+message DomainError {
+  string code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}

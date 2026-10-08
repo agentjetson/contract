@@ -1,0 +1,14 @@
+version: v2
+
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: gen
+    opt:
+      - paths=import
+      - module=github.com/agentjetson/voice-query-service/gen
+
+  - remote: buf.build/grpc/go
+    out: gen
+    opt:
+      - paths=import
+      - module=github.com/agentjetson/voice-query-service/gen

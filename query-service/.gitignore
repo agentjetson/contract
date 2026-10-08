@@ -1,0 +1,42 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/voice-query-service
+/bin/
+/dist/
+
+# Generated protobuf / gRPC stubs (produced by `make generate` or Docker)
+gen/
+*.pb.go
+*_grpc.pb.go
+*.pb.gw.go
+
+# Test / coverage
+*.test
+*.out
+coverage.*
+*.coverprofile
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+go.work
+go.work.sum

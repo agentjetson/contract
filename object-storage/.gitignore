@@ -1,13 +1,10 @@
-gen/
-.buf/
-*.pb.go
-*_grpc.pb.go
 bin/
 data/
 *.wav
 *.mp4
 *.jpg
 .env
+gen/
 .idea/
 .vscode/
 *.exe

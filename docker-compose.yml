@@ -42,5 +42,83 @@ services:
         soft: 262144
         hard: 262144
 
+  minio:
+    image: minio/minio:RELEASE.2024-10-02T17-50-41Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      sleep 3;
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb --ignore-existing local/agentjetson;
+      mc anonymous set download local/agentjetson || true;
+      exit 0;
+      "
+
+  object-storage:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    environment:
+      DEMO_MODE: "false"
+      CLICKHOUSE_ENABLED: "true"
+      CLICKHOUSE_DSN: clickhouse://default:pass@clickhouse:9000/default
+      STORAGE_BACKEND: minio
+      S3_ENDPOINT: minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: agentjetson
+      S3_USE_SSL: "false"
+      S3_FORCE_PATH_STYLE: "true"
+      GRPC_ADDR: 0.0.0.0:50055
+      HTTP_ADDR: 0.0.0.0:8081
+    ports:
+      - "8081:8081"
+      - "50055:50055"
+    depends_on:
+      - minio-init
+    restart: unless-stopped
+    networks:
+      - core_net
+
+  query-service:
+    environment:
+      DEMO_MODE: "false"
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "9000"
+      NATS_URL: nats://nats:4222
+      NATS_ENABLE_LIVE: "true"
+      APPLY_SCHEMA: "true"
+    external_links:
+      - clickhouse
+      - nats
+    networks:
+      - core_net
+
+networks:
+  core_net:
+    external: true
+    name: ${CORE_NETWORK:-core_default}
+
 volumes:
   clickhouse-data:
+  minio_data:
