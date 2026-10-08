@@ -40,6 +40,7 @@ type ObjectHit struct {
 	Class      string    `json:"class"`
 	CameraID   string    `json:"camera_id"`
 	Confidence float64   `json:"confidence"`
+	BBox       []float32 `json:"bbox,omitempty"`
 	SceneL1    string    `json:"scene_l1"`
 	SceneL2    string    `json:"scene_l2"`
 	Timestamp  time.Time `json:"observed_at"`
@@ -53,11 +54,12 @@ type QueryScenesArgs struct {
 }
 
 type SceneHit struct {
-	CameraID   string    `json:"camera_id"`
-	Level1     string    `json:"level1"`
-	Level2     string    `json:"level2"`
-	Confidence float64   `json:"confidence"`
-	Timestamp  time.Time `json:"observed_at"`
+	CameraID     string    `json:"camera_id"`
+	Level1       string    `json:"level1"`
+	Level2       string    `json:"level2"`
+	Confidence   float64   `json:"confidence"`
+	Specialists  []string  `json:"specialists,omitempty"`
+	Timestamp    time.Time `json:"observed_at"`
 }
 
 type QueryAlertsArgs struct {
