@@ -42,6 +42,19 @@ services:
         soft: 262144
         hard: 262144
 
+  aggregator:
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      NATS_URL: ${NATS_URL:-nats://host.docker.internal:4222}
+      STREAM_EVENTS: CV_EVENTS
+      STREAM_ALERTS: CV_ALERTS
+      EMIT_TIMEOUT_MS: "800"
+      FETCH_BATCH: "8"
+      FETCH_TIMEOUT_MS: "200"
+    restart: unless-stopped
+    
   clickhouse-consumer:
     build:
       context: .

@@ -84,3 +84,25 @@ at that instance.
 - [ ] Set `CLICKHOUSE_HOST` for video_server etc. to the contract host.
 - [ ] Ensure JetStream streams `CV_EVENTS`, `CV_ALERTS`, `AUDIO_EVENTS`
       match `domain/nats-subjects.yaml`.
+
+## aggregator (Go)
+
+New service under `contract/aggregator/`. Pure NATS correlator — no CH writes.
+
+```yaml
+  aggregator:
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      NATS_URL: ${NATS_URL:-nats://host.docker.internal:4222}
+      STREAM_EVENTS: CV_EVENTS
+      STREAM_ALERTS: CV_ALERTS
+      EMIT_TIMEOUT_MS: "800"
+    restart: unless-stopped
+```
+
+Core cutover:
+- [ ] Swap core compose `aggregator` image/command to this binary
+- [ ] Remove `core/src/aggregator` + CMake target
+- [ ] Keep durable names `agg-objects` / `agg-results` for zero-downtime consumer continuity
