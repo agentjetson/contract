@@ -54,7 +54,7 @@ services:
       FETCH_BATCH: "8"
       FETCH_TIMEOUT_MS: "200"
     restart: unless-stopped
-    
+
   clickhouse-consumer:
     build:
       context: .
@@ -72,6 +72,29 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
+    restart: unless-stopped
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-m", "8222"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      
+  nats-publisher:
+    build:
+      context: .
+      dockerfile: nats-publisher/Dockerfile
+    environment:
+      NATS_URL: ${NATS_URL:-nats://host.docker.internal:4222}
+      GRPC_ADDR: 0.0.0.0:50051
+    ports:
+      - "50051:50051"
     restart: unless-stopped
 
   minio:
@@ -164,6 +187,15 @@ services:
       - nats
     networks:
       - core_net
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.104.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # gRPC
+      - "4318:4318"   # HTTP
 
 networks:
   core_net:
