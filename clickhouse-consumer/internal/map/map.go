@@ -1,9 +1,4 @@
-// Package map converts contract protos into persistence row types.
-//
-// These helpers accept the generated Go types from
-// github.com/agentjetson/contract/gen/go/... after `make generate`.
-// Until gen/ is wired, the consumer main uses the lightweight
-// internal/proto stubs that mirror the fields we need.
+// Package mapx converts contract protos into persistence row types.
 package mapx
 
 import (
@@ -35,25 +30,30 @@ type AlertFields struct {
 	WatchlistHit bool
 	MatchedLabel string
 	E2ELatencyMs float64
+	Labels       map[string]string
 	Detections   []DetectionFields
 }
 
 type DetectionFields struct {
-	ClassID    int32
-	ClassName  string
-	Confidence float32
+	ClassID        int32
+	ClassName      string
+	Confidence     float32
 	X1, Y1, X2, Y2 float32
-	TrackID    int32
+	TrackID        int32
 }
 
 func AlertToRows(a AlertFields, seq uint64) []persistence.DetectionRow {
 	ts := ProtoTS(a.Timestamp)
+	labels := a.Labels
+	if labels == nil {
+		labels = map[string]string{}
+	}
 	if len(a.Detections) == 0 {
 		return []persistence.DetectionRow{{
 			FrameID: a.FrameID, TS: ts, Source: a.Source,
 			WatchlistHit: BoolU8(a.WatchlistHit), MatchedLabel: a.MatchedLabel,
 			E2ELatencyMs: a.E2ELatencyMs, ClassID: -1, NatsSeq: seq,
-			Labels: map[string]string{},
+			Labels: labels,
 		}}
 	}
 	out := make([]persistence.DetectionRow, 0, len(a.Detections))
@@ -65,7 +65,7 @@ func AlertToRows(a AlertFields, seq uint64) []persistence.DetectionRow {
 			ClassID: d.ClassID, ClassName: d.ClassName, Confidence: d.Confidence,
 			X1: d.X1, Y1: d.Y1, X2: d.X2, Y2: d.Y2,
 			TrackID: d.TrackID, NatsSeq: seq,
-			Labels: map[string]string{},
+			Labels: labels,
 		})
 	}
 	return out
@@ -83,6 +83,7 @@ type TranscriptFields struct {
 	Language     string
 	SpeakerID    string
 	E2ELatencyMs float64
+	Labels       map[string]string
 }
 
 func TranscriptToRow(t TranscriptFields, seq uint64) persistence.TranscriptRow {
@@ -99,12 +100,16 @@ func TranscriptToRow(t TranscriptFields, seq uint64) persistence.TranscriptRow {
 	if lang == "" {
 		lang = "en"
 	}
+	labels := t.Labels
+	if labels == nil {
+		labels = map[string]string{}
+	}
 	return persistence.TranscriptRow{
 		TS: ts, AudioStart: start, AudioEnd: end,
 		Source: t.Source, Text: t.Text, IsFinal: BoolU8(t.IsFinal),
 		Confidence: t.Confidence, Language: lang, SpeakerID: t.SpeakerID,
 		E2ELatencyMs: t.E2ELatencyMs, NatsSeq: seq,
-		Labels: map[string]string{},
+		Labels: labels,
 	}
 }
 
@@ -131,37 +136,46 @@ func ObjectToRow(o ObjectFields, seq uint64) persistence.ObjectRow {
 	if labels == nil {
 		labels = map[string]string{}
 	}
+	sceneL1 := o.SceneL1
+	if sceneL1 == "" {
+		sceneL1 = labels["scene_l1"]
+	}
+	sceneL2 := o.SceneL2
+	if sceneL2 == "" {
+		sceneL2 = labels["scene_l2"]
+	}
 	return persistence.ObjectRow{
 		FrameID: o.FrameID, TS: ProtoTS(o.Timestamp), Source: o.Source,
 		ClassName: o.ClassName, ClassID: o.ClassID, Confidence: o.Confidence,
 		X1: o.X1, Y1: o.Y1, X2: o.X2, Y2: o.Y2, TrackID: o.TrackID,
 		FrameWidth: o.FrameWidth, FrameHeight: o.FrameHeight,
-		CaptureLatencyMs: o.CaptureLatencyMs, SceneL1: o.SceneL1, SceneL2: o.SceneL2,
+		CaptureLatencyMs: o.CaptureLatencyMs, SceneL1: sceneL1, SceneL2: sceneL2,
 		NatsSeq: seq, Labels: labels,
 	}
 }
 
 // ResultFields ← detection.v1.CapabilityResult
 type ResultFields struct {
-	FrameID        int64
-	Timestamp      *timestamppb.Timestamp
-	Source         string
-	Capability     string
-	TrackID        int32
-	ClassName      string
-	Confidence     float32
-	X1, Y1, X2, Y2 float32
-	OCRText        string
-	OCRConfidence  float32
-	PlateX1, PlateY1, PlateX2, PlateY2 float32
-	ProcessingMs   float64
-	VehicleClass   string
-	MakeModel      string
-	Color          string
-	SceneL1        string
-	SceneL2        string
-	Attributes     map[string]string
-	Labels         map[string]string
+	FrameID                    int64
+	Timestamp                  *timestamppb.Timestamp
+	Source                     string
+	Capability                 string
+	TrackID                    int32
+	ClassName                  string
+	Confidence                 float32
+	X1, Y1, X2, Y2             float32
+	OCRText                    string
+	OCRConfidence              float32
+	PlateX1, PlateY1           float32
+	PlateX2, PlateY2           float32
+	ProcessingMs               float64
+	VehicleClass               string
+	MakeModel                  string
+	Color                      string
+	SceneL1                    string
+	SceneL2                    string
+	Attributes                 map[string]string
+	Labels                     map[string]string
 }
 
 func ResultToRow(r ResultFields, seq uint64) persistence.ResultRow {
@@ -173,8 +187,18 @@ func ResultToRow(r ResultFields, seq uint64) persistence.ResultRow {
 	if labels == nil {
 		labels = map[string]string{}
 	}
+
+	// Confidence: explicit field, else OCR confidence for alpr, else 0.
+	conf := r.Confidence
+	if conf == 0 && r.OCRConfidence > 0 {
+		conf = r.OCRConfidence
+	}
+
 	// Prefer denormalized columns; fall back to attributes map.
 	makeModel := r.MakeModel
+	if makeModel == "" {
+		makeModel = attrs["make_model"]
+	}
 	if makeModel == "" {
 		if m, ok := attrs["make"]; ok {
 			makeModel = m
@@ -195,14 +219,26 @@ func ResultToRow(r ResultFields, seq uint64) persistence.ResultRow {
 	if vc == "" {
 		vc = attrs["vehicle_class"]
 	}
+	if vc == "" {
+		vc = r.ClassName // parent object class as last resort
+	}
+	sceneL1 := r.SceneL1
+	if sceneL1 == "" {
+		sceneL1 = labels["scene_l1"]
+	}
+	sceneL2 := r.SceneL2
+	if sceneL2 == "" {
+		sceneL2 = labels["scene_l2"]
+	}
+
 	return persistence.ResultRow{
 		FrameID: r.FrameID, TS: ProtoTS(r.Timestamp), Source: r.Source,
 		Capability: r.Capability, TrackID: r.TrackID, ClassName: r.ClassName,
-		Confidence: r.Confidence, X1: r.X1, Y1: r.Y1, X2: r.X2, Y2: r.Y2,
+		Confidence: conf, X1: r.X1, Y1: r.Y1, X2: r.X2, Y2: r.Y2,
 		OCRText: r.OCRText, OCRConfidence: r.OCRConfidence,
 		PlateX1: r.PlateX1, PlateY1: r.PlateY1, PlateX2: r.PlateX2, PlateY2: r.PlateY2,
 		ProcessingMs: r.ProcessingMs, VehicleClass: vc, MakeModel: makeModel, Color: color,
-		SceneL1: r.SceneL1, SceneL2: r.SceneL2, NatsSeq: seq,
+		SceneL1: sceneL1, SceneL2: sceneL2, NatsSeq: seq,
 		Attributes: attrs, Labels: labels,
 	}
 }
