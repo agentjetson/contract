@@ -11,12 +11,15 @@ OC[object-classifier<br/>primary detect + track<br/>rf-detr · ConsumerPipeline]
 CP[crop-preparator<br/>OpenCV multi-ROI crops]
 end
 
-subgraph Core Services
-ING[ingest_server<br/>gRPC → NATS]
-NP[nats_publisher<br/>JetStream]
+subgraph Contract["agentjetson/contract (this repo)"]
+ING[ingest<br/>gRPC :50052 → NATS publisher]
+NP[nats-publisher<br/>JetStream :50051]
 AGG[aggregator<br/>correlate + watchlist]
-CONS[consumer / clickhouse_consumer]
+CHC[clickhouse-consumer<br/>JetStream → CH]
 CH[(ClickHouse)]
+VQS[query-service<br/>Go · HTTP :8080 · MCP]
+OBS[object-storage<br/>Go · HTTP :8081 · gRPC :50055]
+NATS[NATS JetStream]
 end
 
 subgraph Specialists
@@ -33,9 +36,9 @@ VA[agent<br/>KWS/VAD → STT → LLM → TTS]
 LLM[Local LLM<br/>Ollama / llama.cpp]
 end
 
-subgraph Contract["agentjetson/contract (this repo)"]
-VQS[query-service<br/>Go · HTTP :8080 · MCP]
-OBS[object-storage<br/>Go · HTTP :8081 · gRPC :50055]
+subgraph Core Residual["agentjetson/core (residual)"]
+CONS[consumer<br/>demo Alert stdout]
+VS[video_server / video_viewer]
 end
 
 CAM -->|frames| CC
@@ -50,11 +53,14 @@ OC -.->|optional| CP
 CP -->|enriched crops / ObjectEnvelope| ING
 
 ING --> NP
-NP -->|cv.object.*| ALPR
-NP -->|cv.object.* + cv.result.* + cv.scene.*| AGG
+NP --> NATS
+NATS -->|cv.object.*| ALPR
+NATS -->|cv.object.* + cv.result.* + cv.scene.*| AGG
 ALPR -->|CapabilityResult<br/>cv.result.alpr| NP
-AGG -->|Alert<br/>cv.alert| CONS
-CONS --> CH
+AGG -->|Alert<br/>cv.alert| NATS
+NATS --> CHC
+NATS --> CONS
+CHC --> CH
 
 RFD -.->|primary model| OC
 RFD -.->|plate model| ALPR
@@ -66,9 +72,10 @@ VA -->|transcript| LLM
 VA -->|POST /v1/query/* libcurl| VQS
 LLM -.->|future tool-calls| VQS
 VQS -->|read-only queries| CH
-VQS -.->|optional live peek| NP
+VQS -.->|optional live peek| NATS
 OBS -->|object_meta| CH
 OBS -->|blobs| MinIO[(MinIO / S3)]
+VS -->|reads cv_detections| CH
 
 style CC fill:#1a365d,stroke:#63b3ed,color:#fff
 style SR fill:#744210,stroke:#f6e05e,color:#fff
@@ -84,29 +91,38 @@ style VA fill:#2b6cb0,stroke:#90cdf4,color:#fff
 style VQS fill:#2d3748,stroke:#a0aec0,color:#fff
 style OBS fill:#2d3748,stroke:#a0aec0,color:#fff
 style CH fill:#2d3748,stroke:#a0aec0,color:#fff
+style CONS fill:#718096,stroke:#a0aec0,color:#fff
 ```
 
-## Subject hierarchy (JetStream stream `CV_EVENTS`)
+## Subject hierarchy (JetStream)
 
-| Subject pattern       | Producer          | Consumer(s)              | Payload              |
-|-----------------------|-------------------|--------------------------|----------------------|
-| `cv.object.<class>`   | recorder (object-classifier) | alpr_consumer, aggregator | `ObjectEnvelope`     |
-| `cv.result.<capability>` | specialists (alpr, …) | aggregator            | `CapabilityResult`   |
-| `cv.alert`            | aggregator        | consumer, clickhouse, …  | `Alert`              |
+Canonical map: [`domain/nats-subjects.yaml`](domain/nats-subjects.yaml).
 
-Legacy stream `CV_ALERTS` still captures `cv.alert` for existing consumers.
+| Stream | Subjects | Payload |
+|--------|----------|---------|
+| `CV_EVENTS` | `cv.object.>`, `cv.result.>`, `cv.scene.>` | ObjectEnvelope / CapabilityResult / SceneResult |
+| `CV_ALERTS` | `cv.alert` | Alert |
+| `AUDIO_EVENTS` | `audio.transcript` | Transcript |
+
+| Subject pattern | Producer | Consumer(s) | Table |
+|-----------------|----------|-------------|-------|
+| `cv.object.<class>` | object-classifier / crop-preparator | alpr-consumer, aggregator, clickhouse-consumer | `cv_objects` |
+| `cv.result.<capability>` | specialists (alpr, …) | aggregator, clickhouse-consumer | `cv_results` |
+| `cv.scene.<level1>` / `cv.scene.result` | scene-router, temporal-classifier | aggregator, clickhouse-consumer | `cv_scenes` |
+| `cv.alert` | aggregator | consumer (demo), clickhouse-consumer, video path | `cv_detections` |
+| `audio.transcript` | audio-client | clickhouse-consumer | `audio_transcripts` |
 
 ## Flow
 
 ```
-Cameras → recorder (slim Pipeline)
-            │ detect + track + crop JPEG
+Cameras → object-classifier (or scene-router → object-classifier)
+            │ detect + track + crop JPEG  /  SceneResult
             ▼
-        IngestObject (gRPC)
+        IngestObject / IngestScene (gRPC :50052)
             ▼
-        NATS  cv.object.car / cv.object.person / …
+        nats-publisher → JetStream
             │
-            ├──────────────────► alpr_consumer
+            ├──────────────────► alpr-consumer
             │                      │ plate OCR on crop
             │                      ▼
             │                   cv.result.alpr
@@ -117,38 +133,47 @@ Cameras → recorder (slim Pipeline)
                                    ▼
                                 cv.alert
                                    │
-                                   ├─► consumer (demo)
-                                   └─► clickhouse_consumer
+                                   ├─► consumer (demo stdout — core)
+                                   └─► clickhouse-consumer → ClickHouse
 ```
 
 ## Components
 
-### Recorder (camera-connector + object-classifier (ConsumerPipeline))
-- Capture lives in `camera-connector`; detect+track lives in `object-classifier`.
-- Capture, primary detection, tracking only.
-- Emits one `ObjectEnvelope` per tracked object of interest (with optional JPEG crop).
-- **No** plate OCR, **no** watchlist.
+### Edge (C++)
+- **camera-connector** (private) / **camera-connector-onvif** — capture only.
+- **scene-router** — hierarchical L1→L2 situation; specialist gating hints.
+- **temporal-classifier** — MoViNet refine when `temporal_requested`.
+- **object-classifier** — RF-DETR detect + track → `ObjectEnvelope`.
+- **crop-preparator** — multi-ROI crops (production NATS path still TODO).
+- **alpr-consumer** — pure specialist: `ObjectEnvelope` in → `CapabilityResult` out.
 
-### ALPR consumer ([alpr-consumer](https://github.com/agentjetson/alpr-consumer)) — specialist template
-- Pulls `cv.object.*`, filters to vehicle classes.
-- Runs plate ROI + OCR (mock today; drop in real LPRNet later).
-- Publishes `CapabilityResult` on `cv.result.alpr`.
+### Contract (this repo — Go)
+- **ingest** — gRPC `:50052`; fans out to nats-publisher.
+- **nats-publisher** — JetStream publish surface `:50051`.
+- **aggregator** — correlates objects + capability results; emits `cv.alert`.
+- **clickhouse-consumer** — durable JetStream → ClickHouse writers.
+- **query-service** — read-only HTTP `:8080` + MCP; never publishes.
+- **object-storage** — blob sink HTTP `:8081` / gRPC `:50055`; metadata to CH.
 
-### Aggregator (`src/aggregator`)
-- Correlates objects + capability results in a short time window.
-- Applies watchlist (class + plate text).
-- Emits final `Alert` on `cv.alert`.
+### Core residual (C++)
+- **consumer** — demo Alert stdout consumer.
+- **video_server / video_viewer** — annotated video path over ClickHouse `cv_detections`.
+
+### Voice (C++)
+- **audio-client** — pure STT recorder + live gRPC + optional ingest.
+- **agent** — interactive front-end; calls query-service for scene-aware answers.
 
 ## Adding a new specialist (e.g. vehicle colour)
 
-1. Copy `src/alpr_consumer` → `src/vehicle_attr_consumer`.
-2. Change filter / capability string / inference.
-3. Publish to `cv.result.vehicle_attr`.
-4. Extend aggregator to merge the new attributes into the Alert (or keep them as side-channel results).
+1. Copy `alpr-consumer` pattern → new binary.
+2. Filter / capability string / inference.
+3. Publish to `cv.result.<capability>`.
+4. Extend aggregator to merge attributes into Alert (or keep as side-channel).
+5. Ensure clickhouse-consumer maps the capability into `cv_results`.
 
-## Incremental path status
+## Known gaps (see also TODO.md)
 
-1. ✅ Extract plate logic into dedicated ALPR consumer
-2. ✅ Recorder publishes object envelopes (class + bbox + crop)
-3. ✅ Subject hierarchy `cv.object.>`, `cv.result.>`, `cv.alert`
-5. ✅ Watchlist / alert assembly moved to aggregator
+- clickhouse-consumer must fully write `cv_objects` / `cv_results` / `cv_scenes` (partial today).
+- `pkg/persistence` integration into object-storage + query-service unfinished.
+- Taxonomy: `domain/taxonomy.yaml` vs scene-router README prompts — single-source required.
+- docker-compose: MinIO vs ClickHouse port 9000 clash; external `core_net` assumption.
