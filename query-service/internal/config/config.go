@@ -18,7 +18,7 @@ type Config struct {
 	ClickHouseUser     string
 	ClickHousePassword string
 	ClickHouseDatabase string
-	ApplySchema        bool // create 002 tables if missing
+	ApplySchema        bool // create 002 tables if missing — default false; seed/sql owns schema
 
 	// NATS (optional live path)
 	NATSURL            string
@@ -39,7 +39,7 @@ func Load() *Config {
 		ClickHouseUser:       getEnv("CLICKHOUSE_USER", "default"),
 		ClickHousePassword:   getEnv("CLICKHOUSE_PASSWORD", "pass"),
 		ClickHouseDatabase:   getEnv("CLICKHOUSE_DATABASE", "default"),
-		ApplySchema:          getEnvBool("APPLY_SCHEMA", true),
+		ApplySchema:          getEnvBool("APPLY_SCHEMA", false), // schema owned by seed/sql
 		NATSURL:              getEnv("NATS_URL", "nats://localhost:4222"),
 		NATSEnableLive:       getEnvBool("NATS_ENABLE_LIVE", false),
 		NATSJetStreamStream:  getEnv("NATS_JS_STREAM", "CV"),

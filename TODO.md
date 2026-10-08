@@ -11,49 +11,35 @@ contract/
 │       ├── writer.go
 │       ├── time.go
 │       └── go.mod
+├── gen/go/                   # buf-generated protos (make generate)
 ├── clickhouse-consumer/      # JetStream pull → persistence
-│   ├── cmd/consumer/main.go
+│   ├── cmd/consumer/main.go  # protobuf decode wired
 │   ├── internal/...
 │   ├── Dockerfile
 │   └── go.mod
-├── object-storage/           # already Go — switch metadata inserts here
-├── query-service/            # already Go — switch SELECTs / drop ApplySchema
+├── object-storage/           # uses persistence.InsertObjectMeta
+├── query-service/            # SELECTs via persistence; no ApplySchema in prod
 └── seed/sql/                 # sole schema owner
 ```
 
-## object-storage
+## Done
 
-Replace local metadata store ClickHouse path with:
+- [x] pkg/persistence API (InsertObjects/Results/Scenes/Detections/Transcripts/ObjectMeta)
+- [x] clickhouse-consumer protobuf decode via gen/go
+- [x] object-storage → persistence.InsertObjectMeta (+ MemoryStore DEMO_MODE)
+- [x] taxonomy single-source: contract/domain/taxonomy.yaml (scene-router aligned)
 
-```go
-import "github.com/agentjetson/contract/pkg/persistence"
+## Remaining
 
-ch, err := persistence.Open(persistence.Config{...})
-err = ch.InsertObjectMeta(ctx, persistence.ObjectMetaRow{
-    ObjectID: r.ObjectID,
-    Kind:     r.Kind,
-    // ...
-})
-```
+### query-service
 
-Keep `MemoryStore` for `DEMO_MODE`.
-
-In `object-storage/go.mod`:
-
-```
-require github.com/agentjetson/contract/pkg/persistence v0.0.0
-replace github.com/agentjetson/contract/pkg/persistence => ../pkg/persistence
-```
-
-## query-service
-
-1. Delete `ApplySchema` (WRITE_SPEC / CONSUMING.md).
-2. Open via `persistence.Open` and use `ch.Conn()` for SELECTs against
+1. Prefer `persistence.Open` + `ch.Conn()` for SELECTs against
    `query_cv_results`, `query_cv_objects`, `query_cv_scenes`,
    `query_cv_detections`, `query_audio_transcripts` (see `003_views.sql`).
-3. Same `replace` directive as above.
+2. Default `ApplySchema=false` (schema owned by seed/sql only).
+3. Same `replace` directive for pkg/persistence.
 
-## docker-compose.yml (contract) snippet
+### docker-compose.yml (contract) snippet
 
 ```yaml
   clickhouse-consumer:
@@ -76,7 +62,7 @@ replace github.com/agentjetson/contract/pkg/persistence => ../pkg/persistence
 NATS still lives in core compose (or a shared stack). Point `NATS_URL`
 at that instance.
 
-## core changes checklist
+### core changes checklist
 
 - [ ] Remove `clickhouse` service (use contract's).
 - [ ] Remove `clickhouse-consumer` C++ binary / CMake target.
@@ -85,7 +71,7 @@ at that instance.
 - [ ] Ensure JetStream streams `CV_EVENTS`, `CV_ALERTS`, `AUDIO_EVENTS`
       match `domain/nats-subjects.yaml`.
 
-## aggregator (Go)
+### aggregator (Go)
 
 New service under `contract/aggregator/`. Pure NATS correlator — no CH writes.
 

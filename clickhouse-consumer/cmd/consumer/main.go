@@ -12,55 +12,113 @@ import (
 	"github.com/agentjetson/contract/clickhouse-consumer/internal/config"
 	mapx "github.com/agentjetson/contract/clickhouse-consumer/internal/map"
 	"github.com/agentjetson/contract/clickhouse-consumer/internal/natsjs"
+	audiov1 "github.com/agentjetson/contract/gen/go/audio/v1"
+	detectionv1 "github.com/agentjetson/contract/gen/go/detection/v1"
+	scenev1 "github.com/agentjetson/contract/gen/go/scene/v1"
 	"github.com/agentjetson/contract/pkg/persistence"
 	"github.com/nats-io/nats.go"
+	"google.golang.org/protobuf/proto"
 )
 
-// Decode hooks — replace body with generated protobuf Unmarshal once
-// contract gen/go is available (make generate):
-//
-//	detectionv1 "github.com/agentjetson/contract/gen/go/detection/v1"
-//	audiov1     "github.com/agentjetson/contract/gen/go/audio/v1"
-//	scenev1     "github.com/agentjetson/contract/gen/go/scene/v1"
-//
-//	var a detectionv1.Alert
-//	if err := proto.Unmarshal(data, &a); err != nil { ... }
-//	return mapx.AlertToRows(mapx.AlertFields{... from a ...}, seq), nil
-
 func decodeAlert(data []byte, seq uint64) ([]persistence.DetectionRow, error) {
-	_ = data
-	// TODO: wire gen/go detection.v1.Alert
+	var a detectionv1.Alert
+	if err := proto.Unmarshal(data, &a); err != nil {
+		return nil, err
+	}
+	dets := make([]mapx.DetectionFields, 0, len(a.GetDetections()))
+	for _, d := range a.GetDetections() {
+		df := mapx.DetectionFields{
+			ClassID: d.GetClassId(), ClassName: d.GetClassName(),
+			Confidence: d.GetConfidence(), TrackID: d.GetTrackId(),
+		}
+		if b := d.GetBox(); b != nil {
+			df.X1, df.Y1, df.X2, df.Y2 = b.GetX1(), b.GetY1(), b.GetX2(), b.GetY2()
+		}
+		dets = append(dets, df)
+	}
 	return mapx.AlertToRows(mapx.AlertFields{
-		FrameID: 0, Source: "unknown", ClassID: -1,
-	}, seq), errNeedGen
+		FrameID: a.GetFrameId(), Timestamp: a.GetTimestamp(), Source: a.GetSource(),
+		WatchlistHit: a.GetWatchlistHit(), MatchedLabel: a.GetMatchedLabel(),
+		E2ELatencyMs: a.GetE2ELatencyMs(), Detections: dets,
+	}, seq), nil
 }
 
 func decodeTranscript(data []byte, seq uint64) (persistence.TranscriptRow, error) {
-	_ = data
-	return mapx.TranscriptToRow(mapx.TranscriptFields{Source: "unknown", IsFinal: true}, seq), errNeedGen
+	var t audiov1.Transcript
+	if err := proto.Unmarshal(data, &t); err != nil {
+		return persistence.TranscriptRow{}, err
+	}
+	return mapx.TranscriptToRow(mapx.TranscriptFields{
+		Timestamp: t.GetTimestamp(), AudioStart: t.GetAudioStart(), AudioEnd: t.GetAudioEnd(),
+		Source: t.GetSource(), Text: t.GetText(), IsFinal: t.GetIsFinal(),
+		Confidence: t.GetConfidence(), Language: t.GetLanguage(), SpeakerID: t.GetSpeakerId(),
+		E2ELatencyMs: t.GetE2ELatencyMs(),
+	}, seq), nil
 }
 
 func decodeObject(data []byte, seq uint64) (persistence.ObjectRow, error) {
-	_ = data
-	return mapx.ObjectToRow(mapx.ObjectFields{Source: "unknown"}, seq), errNeedGen
+	var o detectionv1.ObjectEnvelope
+	if err := proto.Unmarshal(data, &o); err != nil {
+		return persistence.ObjectRow{}, err
+	}
+	labels := o.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	of := mapx.ObjectFields{
+		FrameID: o.GetFrameId(), Timestamp: o.GetTimestamp(), Source: o.GetSource(),
+		ClassName: o.GetClassName(), ClassID: o.GetClassId(), Confidence: o.GetConfidence(),
+		TrackID: o.GetTrackId(), FrameWidth: o.GetFrameWidth(), FrameHeight: o.GetFrameHeight(),
+		CaptureLatencyMs: o.GetCaptureLatencyMs(), Labels: labels,
+		SceneL1: labels["scene_l1"], SceneL2: labels["scene_l2"],
+	}
+	if b := o.GetBox(); b != nil {
+		of.X1, of.Y1, of.X2, of.Y2 = b.GetX1(), b.GetY1(), b.GetX2(), b.GetY2()
+	}
+	return mapx.ObjectToRow(of, seq), nil
 }
 
 func decodeResult(data []byte, seq uint64) (persistence.ResultRow, error) {
-	_ = data
-	return mapx.ResultToRow(mapx.ResultFields{Source: "unknown", Capability: "unknown"}, seq), errNeedGen
+	var r detectionv1.CapabilityResult
+	if err := proto.Unmarshal(data, &r); err != nil {
+		return persistence.ResultRow{}, err
+	}
+	attrs := r.GetAttributes()
+	if attrs == nil {
+		attrs = map[string]string{}
+	}
+	labels := r.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	rf := mapx.ResultFields{
+		FrameID: r.GetFrameId(), Timestamp: r.GetTimestamp(), Source: r.GetSource(),
+		Capability: r.GetCapability(), TrackID: r.GetTrackId(), ClassName: r.GetClassName(),
+		OCRText: r.GetOcrText(), OCRConfidence: r.GetOcrConfidence(),
+		ProcessingMs: r.GetProcessingMs(), Attributes: attrs, Labels: labels,
+		SceneL1: labels["scene_l1"], SceneL2: labels["scene_l2"],
+	}
+	if b := r.GetBox(); b != nil {
+		rf.X1, rf.Y1, rf.X2, rf.Y2 = b.GetX1(), b.GetY1(), b.GetX2(), b.GetY2()
+	}
+	if pb := r.GetPlateBox(); pb != nil {
+		rf.PlateX1, rf.PlateY1, rf.PlateX2, rf.PlateY2 = pb.GetX1(), pb.GetY1(), pb.GetX2(), pb.GetY2()
+	}
+	return mapx.ResultToRow(rf, seq), nil
 }
 
 func decodeScene(data []byte, seq uint64) (persistence.SceneRow, error) {
-	_ = data
-	return mapx.SceneToRow(mapx.SceneFields{Source: "unknown", Level1: "unknown"}, seq), errNeedGen
-}
-
-var errNeedGen = errNeedGeneratedProtos{}
-
-type errNeedGeneratedProtos struct{}
-
-func (errNeedGeneratedProtos) Error() string {
-	return "protobuf decode requires contract gen/go (run make generate and replace decode* hooks)"
+	var s scenev1.SceneResult
+	if err := proto.Unmarshal(data, &s); err != nil {
+		return persistence.SceneRow{}, err
+	}
+	return mapx.SceneToRow(mapx.SceneFields{
+		FrameID: s.GetFrameId(), Timestamp: s.GetTimestamp(), Source: s.GetSource(),
+		Level1: s.GetLevel1(), Level2: s.GetLevel2(),
+		Level1Confidence: s.GetLevel1Confidence(), Level2Confidence: s.GetLevel2Confidence(),
+		Specialists: s.GetSpecialists(), Backend: s.GetBackend(),
+		TemporalRequested: s.GetTemporalRequested(), Notes: s.GetNotes(),
+	}, seq), nil
 }
 
 func main() {
@@ -225,7 +283,6 @@ func main() {
 		"flush_size", cfg.FlushSize,
 		"flush_ms", cfg.FlushInterval.Milliseconds(),
 	)
-	slog.Warn("protobuf decode stubs active — run make generate and fill decode* in main.go before production")
 
 	for {
 		select {
