@@ -3,6 +3,7 @@ syntax = "proto3";
 package detection.v1;
 
 option cc_enable_arenas = true;
+option go_package = "github.com/agentjetson/contract/gen/go/detection/v1;detectionv1";
 
 import "google/protobuf/timestamp.proto";
 
@@ -26,6 +27,8 @@ message Detection {
 
 // One pipeline alert (frame + detections + latency)
 // Produced by the aggregator after correlating objects + capability results.
+// Subject: cv.alert
+// Durable table: cv_detections (one row per Detection, denormalized)
 message Alert {
   int64  frame_id           = 1;
   google.protobuf.Timestamp timestamp = 2;
@@ -37,8 +40,10 @@ message Alert {
   map<string, string> labels = 8;  // site, camera_id, etc.
 }
 
-// Object-centric envelope published by the recorder for each tracked object.
+// Object-centric envelope published by the classifier for each tracked object.
 // Subject: cv.object.<class_name>  (e.g. cv.object.car, cv.object.person)
+// Durable table: cv_objects
+// crop_jpeg is transport-only — never stored in ClickHouse.
 message ObjectEnvelope {
   int64  frame_id           = 1;
   google.protobuf.Timestamp timestamp = 2;
@@ -57,6 +62,7 @@ message ObjectEnvelope {
 
 // Result from a specialist microservice (ALPR, vehicle attributes, ...).
 // Subject: cv.result.<capability>  (e.g. cv.result.alpr)
+// Durable table: cv_results
 message CapabilityResult {
   int64  frame_id           = 1;
   google.protobuf.Timestamp timestamp = 2;

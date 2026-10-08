@@ -3,18 +3,23 @@ syntax = "proto3";
 package ingest.v1;
 
 option cc_enable_arenas = true;
+option go_package = "github.com/agentjetson/contract/gen/go/ingest/v1;ingestv1";
 
 import "common/v1/error.proto";
 import "audio/v1/transcript.proto";
 import "detection/v1/detection.proto";
+import "scene/v1/scene.proto";
 
+// Edge → core ingress. Each RPC is a thin pass-through onto NATS JetStream.
 service IngestService {
   // Push single CV alert (all detections from one frame) — used by aggregator
   rpc IngestAlert(IngestAlertRequest) returns (IngestAlertResponse);
-  // Push object-centric envelope from recorder
+  // Push object-centric envelope from classifier / crop-preparator
   rpc IngestObject(IngestObjectRequest) returns (IngestObjectResponse);
   // Push specialist capability result
   rpc IngestResult(IngestResultRequest) returns (IngestResultResponse);
+  // Push scene-router / temporal-classifier situation
+  rpc IngestScene(IngestSceneRequest) returns (IngestSceneResponse);
   rpc IngestTranscript(IngestTranscriptRequest) returns (IngestTranscriptResponse);
 }
 
@@ -52,6 +57,16 @@ message IngestResultRequest {
 }
 
 message IngestResultResponse {
+  bool   accepted   = 1;
+  string message_id = 2;
+  common.v1.DomainError error = 3;
+}
+
+message IngestSceneRequest {
+  scene.v1.SceneResult scene = 1;
+}
+
+message IngestSceneResponse {
   bool   accepted   = 1;
   string message_id = 2;
   common.v1.DomainError error = 3;

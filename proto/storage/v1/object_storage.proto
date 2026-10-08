@@ -1,0 +1,173 @@
+syntax = "proto3";
+
+package storage.v1;
+
+option go_package = "github.com/agentjetson/object-storage/gen/storage/v1;storagev1";
+option cc_enable_arenas = true;
+
+import "google/protobuf/timestamp.proto";
+import "common/v1/error.proto";
+
+// ---------------------------------------------------------------------------
+// Object kinds stored by this service.  Used for bucket prefixes and
+// correlation keys written into ClickHouse.
+// ---------------------------------------------------------------------------
+enum ObjectKind {
+  OBJECT_KIND_UNSPECIFIED = 0;
+  OBJECT_KIND_AUDIO_TRANSCRIPT = 1;   // raw or final STT audio segment / sidecar
+  OBJECT_KIND_CAMERA_RECORDING = 2;   // continuous or event-clipped video
+  OBJECT_KIND_FRAME_SNAPSHOT = 3;     // single JPEG / keyframe
+  OBJECT_KIND_CROP = 4;               // secondary ROI crop (from crop-preparator)
+  OBJECT_KIND_ANNOTATED_CLIP = 5;     // annotated video produced by core
+  OBJECT_KIND_OTHER = 99;
+}
+
+// Metadata that lets ClickHouse (and query-service) join a blob back to
+// cv.object.*, cv.scene.*, audio.transcript, cv.alert rows.
+message ObjectMeta {
+  string object_id          = 1;   // UUID assigned by the service
+  ObjectKind kind           = 2;
+  string source             = 3;   // camera_id / mic_id / rtsp url
+  google.protobuf.Timestamp timestamp = 4;  // event time (not upload time)
+  int64  frame_id           = 5;   // optional; links to ObjectEnvelope / Alert
+  int32  track_id           = 6;   // optional; links to tracked object
+  string content_type       = 7;   // e.g. "video/mp4", "audio/wav", "image/jpeg"
+  int64  size_bytes         = 8;
+  string checksum_sha256    = 9;
+  map<string, string> labels = 10; // site, camera_id, session_id, …
+  string storage_key        = 11;  // full key inside the backend bucket
+  string bucket             = 12;
+  google.protobuf.Timestamp created_at = 13; // upload time
+}
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+service ObjectStorageService {
+  // Unary put of a complete object (small-to-medium blobs).
+  rpc PutObject(PutObjectRequest) returns (PutObjectResponse);
+
+  // Client-streaming put for large recordings / long audio.
+  rpc PutObjectStream(stream PutObjectChunk) returns (PutObjectResponse);
+
+  // Fetch metadata only (no payload).
+  rpc GetObjectMeta(GetObjectMetaRequest) returns (GetObjectMetaResponse);
+
+  // Stream the object bytes back to the caller.
+  rpc GetObject(GetObjectRequest) returns (stream GetObjectChunk);
+
+  // Presigned URL for browser / external download (S3-compatible backends).
+  rpc GetPresignedURL(GetPresignedURLRequest) returns (GetPresignedURLResponse);
+
+  // List objects by source / kind / time window (for correlation UI).
+  rpc ListObjects(ListObjectsRequest) returns (ListObjectsResponse);
+
+  // Soft-delete (or hard-delete depending on retention policy).
+  rpc DeleteObject(DeleteObjectRequest) returns (DeleteObjectResponse);
+
+  // Health / readiness.
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Put
+// ---------------------------------------------------------------------------
+message PutObjectRequest {
+  ObjectKind kind           = 1;
+  string source             = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  int64  frame_id           = 4;
+  int32  track_id           = 5;
+  string content_type       = 6;
+  bytes  data               = 7;   // full payload for unary put
+  map<string, string> labels = 8;
+  // Optional client-supplied object_id (UUID).  If empty, server generates one.
+  string object_id          = 9;
+}
+
+message PutObjectChunk {
+  // First chunk carries metadata; subsequent chunks only data.
+  oneof payload {
+    PutObjectRequest header = 1;
+    bytes data              = 2;
+  }
+}
+
+message PutObjectResponse {
+  bool accepted             = 1;
+  ObjectMeta meta           = 2;
+  common.v1.DomainError error = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Get
+// ---------------------------------------------------------------------------
+message GetObjectMetaRequest {
+  string object_id = 1;
+  // Alternative lookup by storage_key when object_id is unknown.
+  string storage_key = 2;
+}
+
+message GetObjectMetaResponse {
+  ObjectMeta meta           = 1;
+  common.v1.DomainError error = 2;
+}
+
+message GetObjectRequest {
+  string object_id   = 1;
+  string storage_key = 2;
+}
+
+message GetObjectChunk {
+  bytes data = 1;
+}
+
+message GetPresignedURLRequest {
+  string object_id   = 1;
+  string storage_key = 2;
+  // Validity window in seconds (default 3600).
+  int32 expires_sec  = 3;
+}
+
+message GetPresignedURLResponse {
+  string url                = 1;
+  google.protobuf.Timestamp expires_at = 2;
+  common.v1.DomainError error = 3;
+}
+
+// ---------------------------------------------------------------------------
+// List / Delete / Health
+// ---------------------------------------------------------------------------
+message ListObjectsRequest {
+  string source             = 1;  // optional filter
+  ObjectKind kind           = 2;  // optional; UNSPECIFIED = all
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Timestamp end_time   = 4;
+  int32  limit              = 5;  // default 100, max 1000
+  string page_token         = 6;
+}
+
+message ListObjectsResponse {
+  repeated ObjectMeta objects = 1;
+  string next_page_token      = 2;
+  common.v1.DomainError error = 3;
+}
+
+message DeleteObjectRequest {
+  string object_id   = 1;
+  string storage_key = 2;
+  bool   hard_delete = 3;  // if true, remove from backend; else mark deleted
+}
+
+message DeleteObjectResponse {
+  bool deleted              = 1;
+  common.v1.DomainError error = 2;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool   ok      = 1;
+  string backend = 2;  // "minio" | "s3" | "filesystem"
+  string detail  = 3;
+}

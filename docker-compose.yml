@@ -1,0 +1,46 @@
+# ClickHouse-only adapter. No NATS, no core, no query-service.
+# Core and voice-query-service point at this instance.
+#
+#   make up          # or: docker compose up -d
+#   make schema      # re-apply DDL (idempotent)
+#   make seed        # demo rows (seed.cam-*, seed.mic-*)
+#
+# Env expected by consumers (same names as core compose):
+#   CLICKHOUSE_HOST=localhost
+#   CLICKHOUSE_PORT=9000
+#   CLICKHOUSE_USER=default
+#   CLICKHOUSE_PASSWORD=pass
+#   CLICKHOUSE_DB=default
+
+name: agentjetson-contract
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: aj-clickhouse
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: "pass"
+      CLICKHOUSE_DB: default
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./seed/sql/001_database.sql:/docker-entrypoint-initdb.d/001_database.sql:ro
+      - ./seed/sql/002_tables.sql:/docker-entrypoint-initdb.d/002_tables.sql:ro
+      - ./seed/sql/003_views.sql:/docker-entrypoint-initdb.d/003_views.sql:ro
+      - ./seed/sql/004_seed.sql:/docker-entrypoint-initdb.d/004_seed.sql:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+      start_period: 5s
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+volumes:
+  clickhouse-data:

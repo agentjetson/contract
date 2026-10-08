@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package nats.v1;
+
+option cc_enable_arenas = true;
+option go_package = "github.com/agentjetson/contract/gen/go/nats/v1;natsv1";
+
+import "audio/v1/transcript.proto";
+import "common/v1/error.proto";
+import "detection/v1/detection.proto";
+import "scene/v1/scene.proto";
+
+// Owns the NATS / JetStream connection and publishes domain events.
+//
+// Stream ownership (no subject overlap):
+//   CV_EVENTS  → cv.object.>, cv.result.>, cv.scene.>
+//   CV_ALERTS  → cv.alert
+//   AUDIO_EVENTS → audio.transcript
+service NatsPublisherService {
+  rpc PublishAlert(PublishAlertRequest) returns (PublishAlertResponse);
+  rpc PublishTranscript(PublishTranscriptRequest) returns (PublishTranscriptResponse);
+  rpc PublishObject(PublishObjectRequest) returns (PublishObjectResponse);
+  rpc PublishResult(PublishResultRequest) returns (PublishResultResponse);
+  rpc PublishScene(PublishSceneRequest) returns (PublishSceneResponse);
+}
+
+message PublishAlertRequest {
+  detection.v1.Alert alert = 1;
+  string subject = 2;          // optional, default "cv.alert"
+}
+
+message PublishAlertResponse {
+  bool   published = 1;
+  string subject   = 2;
+  uint64 sequence  = 3;        // JetStream sequence
+  common.v1.DomainError error = 4;
+}
+
+message PublishTranscriptRequest {
+  audio.v1.Transcript transcript = 1;
+  string subject = 2;  // default "audio.transcript"
+}
+
+message PublishTranscriptResponse {
+  bool   published = 1;
+  string subject   = 2;
+  uint64 sequence  = 3;
+  common.v1.DomainError error = 4;
+}
+
+message PublishObjectRequest {
+  detection.v1.ObjectEnvelope object = 1;
+  string subject = 2;  // optional; default cv.object.<class_name>
+}
+
+message PublishObjectResponse {
+  bool   published = 1;
+  string subject   = 2;
+  uint64 sequence  = 3;
+  common.v1.DomainError error = 4;
+}
+
+message PublishResultRequest {
+  detection.v1.CapabilityResult result = 1;
+  string subject = 2;  // optional; default cv.result.<capability>
+}
+
+message PublishResultResponse {
+  bool   published = 1;
+  string subject   = 2;
+  uint64 sequence  = 3;
+  common.v1.DomainError error = 4;
+}
+
+message PublishSceneRequest {
+  scene.v1.SceneResult scene = 1;
+  string subject = 2;  // optional; default cv.scene.<level1>
+}
+
+message PublishSceneResponse {
+  bool   published = 1;
+  string subject   = 2;
+  uint64 sequence  = 3;
+  common.v1.DomainError error = 4;
+}

@@ -1,0 +1,18 @@
+version: v2
+
+modules:
+  - path: proto
+    name: buf.build/agentjetson/contract
+
+deps:
+  - buf.build/googleapis/googleapis
+
+lint:
+  use:
+    - STANDARD
+  except:
+    - PACKAGE_DIRECTORY_MATCH
+
+breaking:
+  use:
+    - FILE

@@ -1,0 +1,54 @@
+# JetStream subject ownership. Streams must not overlap subjects.
+
+streams:
+  CV_EVENTS:
+    subjects:
+      - cv.object.>
+      - cv.result.>
+      - cv.scene.>
+    retention: limits
+    max_age: 1h
+  CV_ALERTS:
+    subjects:
+      - cv.alert
+    retention: limits
+    max_age: 1h
+  AUDIO_EVENTS:
+    subjects:
+      - audio.transcript
+    retention: limits
+    max_age: 1h
+
+subjects:
+  cv.object.<class_name>:
+    proto: detection.v1.ObjectEnvelope
+    publisher: object-classifier | crop-preparator
+    table: cv_objects
+  cv.result.<capability>:
+    proto: detection.v1.CapabilityResult
+    publisher: specialists (alpr-consumer, …)
+    table: cv_results
+  cv.scene.<level1>:
+    proto: scene.v1.SceneResult
+    publisher: scene-router
+    table: cv_scenes
+  cv.scene.result:
+    proto: scene.v1.SceneResult
+    publisher: scene-router | temporal-classifier (refined)
+    table: cv_scenes
+  cv.alert:
+    proto: detection.v1.Alert
+    publisher: aggregator
+    table: cv_detections
+  audio.transcript:
+    proto: audio.v1.Transcript
+    publisher: audio-client
+    table: audio_transcripts
+  cv.crop.<crop_kind>:
+    proto: crop.v1.PreparedCrop
+    publisher: crop-preparator (optional side-channel)
+    table: null   # hot-path bytes, not durable
+  cv.frame.<source>:
+    proto: capture.v1.FrameEnvelope
+    publisher: camera-connector (future)
+    table: null

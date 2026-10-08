@@ -3,6 +3,7 @@ syntax = "proto3";
 package audio.v1;
 
 option cc_enable_arenas = true;
+option go_package = "github.com/agentjetson/contract/gen/go/audio/v1;audiov1";
 
 import "audio/v1/transcript.proto";
 

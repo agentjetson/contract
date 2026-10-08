@@ -10,6 +10,10 @@ This document is the single source of truth for how the AgentJetson edge CV + au
 
 **Voice path (unified monorepo):** [agentjetson/voice](https://github.com/agentjetson/voice) — merges the former `audio-client`, `voice-agent`, and `voice-query-service` into one tree with shared models, compose, and contracts.
 
+**This repo owns the contracts.** `.proto` files, ClickHouse DDL, NATS subject map, and scene taxonomy live here. Other repos consume; they do not keep a private copy. The Go query service stays a **separate repo** (`voice-query-service`) — it generates stubs from these protos and reads the `query_*` views. ClickHouse is an interchangeable adapter: `make up` in this repo spins it up with no dependency on core.
+
+See [`CONSUMING.md`](CONSUMING.md), [`seed/README.md`](seed/README.md), [`seed/WRITE_SPEC.md`](seed/WRITE_SPEC.md).
+
 ---
 
 ## Architecture (current)
@@ -120,7 +124,7 @@ style CH fill:#2d3748,stroke:#a0aec0,color:#fff
 
 | Repository                                                                    | Role                                                      | Depends on                                              |
 | ----------------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------- |
-| [core](https://github.com/agentjetson/core)                                   | ingest, nats_publisher, aggregator, consumers, ClickHouse | —                                                       |
+| [core](https://github.com/agentjetson/core)                                   | ingest, nats_publisher, aggregator, consumers | ClickHouse adapter is this repo (`make up`)             |
 | [rf-detr](https://github.com/agentjetson/rf-detr)                             | Shared C++ RF-DETR ONNX inference library                 | OpenCV, ONNX Runtime                                    |
 | [alpr-consumer](https://github.com/agentjetson/alpr-consumer)                 | ALPR specialist (ObjectEnvelope → CapabilityResult)       | core (NATS JetStream), **rf-detr**, Fast-Plate-OCR ONNX |
 | [camera-connector](https://github.com/agentjetson/camera-connector)           | Thin multi-source capture (V4L2 / RTSP / file)            | OpenCV                                                  |
@@ -321,24 +325,37 @@ Plate / vehicle questions are routed to query-service via libcurl (intent heuris
 
 ---
 
-## ClickHouse schema (voice ↔ core)
+## ClickHouse schema (this repo)
 
-**core `clickhouse_consumer` today** only writes:
+One schema. Applied by `make schema` (or first `docker compose up` via `seed/sql/`). Core's clickhouse_consumer and query-service **do not CREATE TABLE**.
 
-| Subject            | Table               | Notes |
-| ------------------ | ------------------- | ----- |
-| `cv.alert`         | `cv_detections`     | frame_id, ts, source, class_name, bbox, watchlist_hit, … |
-| `audio.transcript` | `audio_transcripts` | ts, text, is_final, confidence, speaker_id, … |
+```bash
+make up          # ClickHouse only — 8123 HTTP / 9000 native
+make schema      # idempotent DDL
+make seed        # demo rows (seed.cam-* / seed.mic-*)
+```
 
-**query-service tools** also expect:
+Env for consumers (unchanged from core compose):
 
-| Table         | Intended source                         | Status |
-| ------------- | --------------------------------------- | ------ |
-| `cv_results`  | `cv.result.alpr` (CapabilityResult)     | **Not written by core yet** |
-| `cv_objects`  | `cv.object.*` (ObjectEnvelope)          | **Not written by core yet** |
-| `cv_scenes`   | `cv.scene.*` (SceneResult)              | **Not written by core yet** |
+```
+CLICKHOUSE_HOST=localhost
+CLICKHOUSE_PORT=9000
+CLICKHOUSE_USER=default
+CLICKHOUSE_PASSWORD=pass
+CLICKHOUSE_DB=default
+```
 
-Until core grows those writers, run query-service with **`DEMO_MODE=true`** for the voice demo, or adapt the Go queries to the core tables. Schema DDL for both layers lives in `voice/query-service/sql/002_envelopes.sql`.
+| Subject             | Proto                           | Table                 | Writer today                         |
+| ------------------- | ------------------------------- | --------------------- | ------------------------------------ |
+| `cv.object.>`       | `detection.v1.ObjectEnvelope`   | `cv_objects`          | **core consumer to add**             |
+| `cv.result.>`       | `detection.v1.CapabilityResult` | `cv_results`          | **core consumer to add**             |
+| `cv.scene.>`        | `scene.v1.SceneResult`          | `cv_scenes`           | **core consumer to add**             |
+| `cv.alert`          | `detection.v1.Alert`            | `cv_detections`       | core clickhouse_consumer             |
+| `audio.transcript`  | `audio.v1.Transcript`           | `audio_transcripts`   | core clickhouse_consumer             |
+
+`query_*` views in `seed/sql/003_views.sql` alias proto column names to the Go query-service `Scan` shape (`event_time`, `camera_id`, `plate`, …). `video_server` keeps reading physical `cv_detections` columns (`frame_id, class_id, class_name, confidence, x1, y1, x2, y2`).
+
+Until the extra writers land, query-service can run against `make seed` (or `DEMO_MODE=true`). Do **not** resurrect a second DDL in Go or C++.
 
 ---
 
@@ -359,7 +376,7 @@ Until core grows those writers, run query-service with **`DEMO_MODE=true`** for 
 13. **Crop quality is a separable concern.** crop-preparator improves secondary accuracy without touching the primary model or the aggregator.
 14. **Edge-first.** Heavy lifting stays as close to the camera as latency and hardware allow. Core is correlation + policy + durable bus.
 15. **Composable by design.** New cameras → camera-connector. New primary models → RF-DETR ONNX under object-classifier. New situation models → scene-router / temporal-classifier. New capabilities → specialist speaking `CapabilityResult`. New query surfaces → extend query-service tools.
-16. **Contracts live in `.proto` files** and are generated with Buf (especially for the query service and future shared packages).
+16. **Contracts live in this repo.** `.proto` files, ClickHouse DDL, NATS subjects, taxonomy. Generated with Buf. Other repos consume; they do not fork a copy.
 17. **Shared speech models.** One `voice/models/` tree and shared `SHERPA_*` env names for audio-client and agent.
 
 ---
@@ -377,7 +394,7 @@ Until core grows those writers, run query-service with **`DEMO_MODE=true`** for 
 | Multi-device       | multiple camera-connectors → shared classifier / router pool                          |
 | Policy / watchlist | richer aggregator rules, geo-fencing, temporal logic, scene-aware policy              |
 | rf-detr            | TensorRT engines, INT8, Jetson-tuned builds                                           |
-| **ClickHouse**     | core consumer writes `cv_results` / `cv_objects` / `cv_scenes`; unify column shapes   |
+| **ClickHouse**     | Writers for `cv_objects` / `cv_results` / `cv_scenes`; drop CREATE TABLE from core & query-service |
 | **Voice / agent**  | full Ollama tool-calling loop; KWS “AJ”; optional IngestTranscript from agent         |
 | **Voice / shared** | common C++ STT helpers (P2); shared Buf workspace; OTEL spans (P3)                    |
 | **Query layer**    | richer MCP tools, live NATS peeks, multi-tenant ACLs                                  |
@@ -476,10 +493,10 @@ Until core grows those writers, run query-service with **`DEMO_MODE=true`** for 
 | **Voice monorepo** | **Merged**      | **agentjetson/voice** = audio-client + agent + query-service; shared models & compose |
 | Query layer      | DEMO ready        | HTTP + MCP; live CH blocked on core writers for `cv_results` etc. |
 | Agent → query    | Wired             | libcurl `/v1/query/plates` + plate-intent heuristic; full tool-calling still open |
-| Core CH consumer | Partial           | Writes `cv_detections` + `audio_transcripts` only |
-| Core compose     | Ready             | Does not include alpr-consumer or scene-router (run separately); enable ClickHouse for queries |
-| crop-preparator  | Optional          | Not on critical path for demo 1 |
-| Protos           | Vendored per repo | Keep in sync; longer-term: shared package/submodule; Buf for query-service |
+| Core CH consumer | Partial           | Writes `cv_detections` + `audio_transcripts`; objects/results/scenes still needed. Schema is `contract/seed/sql`. |
+| Core compose     | Ready             | ClickHouse moves to `contract/` (`make up`); core points `CLICKHOUSE_HOST` at it |
+| crop-preparator  | Optional          | Not on critical path for demo 1; `crop.v1.PreparedCrop` is the side-channel |
+| Protos           | **This repo**     | Consume via submodule / Buf. `voice.v1` lives here; Go service stays separate |
 | Gating           | Planned           | scene-router specialist list → activate alpr / speed / officer / … only when relevant |
 
 ---
@@ -488,10 +505,10 @@ Until core grows those writers, run query-service with **`DEMO_MODE=true`** for 
 
 | Priority | Focus | Status |
 | -------- | ----- | ------ |
-| **P0** | Durable data path; schema docs vs core consumer | Schema documented; core writers for `cv_results` / objects / scenes still needed |
+| **P0** | Durable data path; one schema | **Done in this repo.** Core writers for objects/results/scenes still needed; query-service drops ApplySchema |
 | **P1** | agent → query-service; tool loop | Plates path wired (heuristic); full Ollama tool-calling + KWS “AJ” open |
 | **P2** | Unify C++ speech binaries / shared helpers | Open |
-| **P3** | Shared Buf, OTEL, live NATS filters, compose.core polish | Open |
+| **P3** | Shared Buf, OTEL, live NATS filters, compose.core polish | Buf workspace is this repo; remaining: consume it |
 
 ---
 

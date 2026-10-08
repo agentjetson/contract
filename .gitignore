@@ -1,0 +1,4 @@
+gen/
+.buf/
+*.pb.go
+*_grpc.pb.go
