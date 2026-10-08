@@ -1,4 +1,4 @@
-module github.com/agentjetson/contract/pkg/natsjs
+module github.com/agentjetson/core/pkg/natsjs
 
 go 1.22
 

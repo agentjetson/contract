@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/agentjetson/contract/nats-publisher/internal/config"
-	"github.com/agentjetson/contract/nats-publisher/internal/service"
-	"github.com/agentjetson/contract/pkg/natsjs"
-	natsv1 "github.com/agentjetson/contract/gen/go/nats/v1"
+	natsv1 "github.com/agentjetson/core/gen/go/nats/v1"
+	"github.com/agentjetson/core/nats-publisher/internal/config"
+	"github.com/agentjetson/core/nats-publisher/internal/service"
+	"github.com/agentjetson/core/pkg/natsjs"
 	"google.golang.org/grpc"
 )
 

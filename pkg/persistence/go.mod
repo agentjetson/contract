@@ -1,4 +1,4 @@
-module github.com/agentjetson/contract/pkg/persistence
+module github.com/agentjetson/core/pkg/persistence
 
 go 1.22
 

@@ -1,6 +1,6 @@
 # Integrating pkg/persistence + clickhouse-consumer
 
-## Layout in agentjetson/contract
+## Layout in agentjetson/core
 
 ```
 contract/

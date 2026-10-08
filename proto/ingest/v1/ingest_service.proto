@@ -3,7 +3,7 @@ syntax = "proto3";
 package ingest.v1;
 
 option cc_enable_arenas = true;
-option go_package = "github.com/agentjetson/contract/gen/go/ingest/v1;ingestv1";
+option go_package = "github.com/agentjetson/core/gen/go/ingest/v1;ingestv1";
 
 import "common/v1/error.proto";
 import "audio/v1/transcript.proto";

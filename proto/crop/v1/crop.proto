@@ -3,7 +3,7 @@ syntax = "proto3";
 package crop.v1;
 
 option cc_enable_arenas = true;
-option go_package = "github.com/agentjetson/contract/gen/go/crop/v1;cropv1";
+option go_package = "github.com/agentjetson/core/gen/go/crop/v1;cropv1";
 
 import "google/protobuf/timestamp.proto";
 import "detection/v1/detection.proto";

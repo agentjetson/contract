@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/agentjetson/contract/pkg/persistence"
+	"github.com/agentjetson/core/pkg/persistence"
 	"github.com/agentjetson/voice-query-service/internal/config"
 	"github.com/agentjetson/voice-query-service/internal/models"
 )
@@ -15,8 +15,8 @@ import (
 // SELECTs go against query_* views (seed/sql/003_views.sql).
 
 type Client struct {
-	cfg  *config.Config
-	ch   *persistence.Client
+	cfg *config.Config
+	ch  *persistence.Client
 }
 
 func New(cfg *config.Config) (*Client, error) {

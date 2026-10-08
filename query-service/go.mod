@@ -7,7 +7,7 @@ go 1.22
 // Do NOT call ApplySchema — schema is owned by contract/seed/sql (make schema).
 
 require (
-	github.com/agentjetson/contract/pkg/persistence v0.0.0
+	github.com/agentjetson/core/pkg/persistence v0.0.0
 )
 
-replace github.com/agentjetson/contract/pkg/persistence => ../pkg/persistence
+replace github.com/agentjetson/core/pkg/persistence => ../pkg/persistence

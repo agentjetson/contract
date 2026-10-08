@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/agentjetson/contract/pkg/persistence"
+	"github.com/agentjetson/core/pkg/persistence"
 )
 
 // Config is the clickhouse-consumer runtime configuration.

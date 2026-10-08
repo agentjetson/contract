@@ -12,9 +12,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/agentjetson/contract/ingest/internal/config"
-	"github.com/agentjetson/contract/ingest/internal/service"
-	ingestv1 "github.com/agentjetson/contract/gen/go/ingest/v1"
+	ingestv1 "github.com/agentjetson/core/gen/go/ingest/v1"
+	"github.com/agentjetson/core/ingest/internal/config"
+	"github.com/agentjetson/core/ingest/internal/service"
 	"google.golang.org/grpc"
 )
 

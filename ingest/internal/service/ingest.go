@@ -10,9 +10,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	commonv1 "github.com/agentjetson/contract/gen/go/common/v1"
-	ingestv1 "github.com/agentjetson/contract/gen/go/ingest/v1"
-	natsv1 "github.com/agentjetson/contract/gen/go/nats/v1"
+	commonv1 "github.com/agentjetson/core/gen/go/common/v1"
+	ingestv1 "github.com/agentjetson/core/gen/go/ingest/v1"
+	natsv1 "github.com/agentjetson/core/gen/go/nats/v1"
 )
 
 // Ingest implements ingest.v1.IngestServiceServer.

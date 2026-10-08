@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	detectionv1 "github.com/agentjetson/contract/gen/go/detection/v1"
+	detectionv1 "github.com/agentjetson/core/gen/go/detection/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -190,12 +190,12 @@ func (e *Engine) emitLocked(key trackKey, p *pendingObject) {
 func (e *Engine) buildAlert(p *pendingObject) *detectionv1.Alert {
 	o := p.obj
 	alert := &detectionv1.Alert{
-		FrameId:       o.FrameId,
-		Timestamp:     timestamppb.Now(),
-		Source:        o.Source,
-		E2ELatencyMs:  o.CaptureLatencyMs,
-		WatchlistHit:  false,
-		MatchedLabel:  "",
+		FrameId:      o.FrameId,
+		Timestamp:    timestamppb.Now(),
+		Source:       o.Source,
+		E2ELatencyMs: o.CaptureLatencyMs,
+		WatchlistHit: false,
+		MatchedLabel: "",
 	}
 
 	det := &detectionv1.Detection{

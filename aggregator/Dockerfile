@@ -13,7 +13,7 @@ COPY aggregator /src/aggregator
 
 # gen/go is not committed — generate at build time
 RUN buf generate
-RUN printf 'module github.com/agentjetson/contract/gen/go\n\ngo 1.22\n\nrequire google.golang.org/protobuf v1.36.1\n' \
+RUN printf 'module github.com/agentjetson/core/gen/go\n\ngo 1.22\n\nrequire google.golang.org/protobuf v1.36.1\n' \
     > /src/gen/go/go.mod
 
 WORKDIR /src/aggregator

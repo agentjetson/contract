@@ -2,7 +2,7 @@ version: v2
 
 modules:
   - path: proto
-    name: buf.build/agentjetson/contract
+    name: buf.build/agentjetson/core
 
 deps:
   - buf.build/googleapis/googleapis

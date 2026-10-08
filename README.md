@@ -76,7 +76,7 @@ contract (Go):  ingest → nats-publisher → JetStream
 
 | Repository | Visibility | Role | Depends on |
 | ---------- | ---------- | ---- | ---------- |
-| **[contract](https://github.com/agentjetson/contract)** (this repo) | public | protos, DDL, domain, **ingest, nats-publisher, aggregator, clickhouse-consumer, query-service, object-storage** | Docker Compose |
+| **[contract](https://github.com/agentjetson/core)** (this repo) | public | protos, DDL, domain, **ingest, nats-publisher, aggregator, clickhouse-consumer, query-service, object-storage** | Docker Compose |
 | [core](https://github.com/agentjetson/core) | public | residual: demo Alert `consumer`, `video_server`, `video_viewer` | contract ClickHouse |
 | [rf-detr](https://github.com/agentjetson/rf-detr) | **private** | Shared C++ RF-DETR ONNX library | OpenCV, ONNX Runtime |
 | [camera-connector](https://github.com/agentjetson/camera-connector) | **private** | Thin multi-source capture (V4L2 / RTSP / file) | OpenCV |
@@ -158,7 +158,7 @@ export LD_LIBRARY_PATH=$SHERPA_ONNX_ROOT/lib:$LD_LIBRARY_PATH
 ### 1. Contract stack (NATS + ClickHouse + Go services)
 
 ```bash
-git clone https://github.com/agentjetson/contract.git
+git clone https://github.com/agentjetson/core.git
 cd contract
 
 make up          # full compose: nats, clickhouse, ingest, nats-publisher,

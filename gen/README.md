@@ -13,7 +13,7 @@ Then ensure the module stub exists:
 
 ```bash
 cat > gen/go/go.mod <<'EOF'
-module github.com/agentjetson/contract/gen/go
+module github.com/agentjetson/core/gen/go
 
 go 1.22
 
@@ -23,9 +23,9 @@ EOF
 
 `clickhouse-consumer` imports:
 
-- `github.com/agentjetson/contract/gen/go/detection/v1`
-- `github.com/agentjetson/contract/gen/go/scene/v1`
-- `github.com/agentjetson/contract/gen/go/audio/v1`
+- `github.com/agentjetson/core/gen/go/detection/v1`
+- `github.com/agentjetson/core/gen/go/scene/v1`
+- `github.com/agentjetson/core/gen/go/audio/v1`
 
 Docker builds run `buf generate` inside the image (see `clickhouse-consumer/Dockerfile`),
 so images do not depend on committed stubs. For local `go build`, always run `make generate` first.

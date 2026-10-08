@@ -16,5 +16,5 @@ docker:
 
 # Requires buf CLI + protoc plugins.  Generates gen/ from proto/.
 proto:
-	@echo "Wire buf.gen.yaml when integrating with agentjetson/contract Buf workspace"
+	@echo "Wire buf.gen.yaml when integrating with agentjetson/core Buf workspace"
 	@echo "  buf generate"

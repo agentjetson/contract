@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/agentjetson/contract/aggregator/internal/config"
-	"github.com/agentjetson/contract/aggregator/internal/correlate"
-	"github.com/agentjetson/contract/aggregator/internal/natsjs"
+	"github.com/agentjetson/core/aggregator/internal/config"
+	"github.com/agentjetson/core/aggregator/internal/correlate"
+	"github.com/agentjetson/core/aggregator/internal/natsjs"
 	"github.com/nats-io/nats.go"
 )
 

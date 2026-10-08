@@ -11,7 +11,7 @@ OC[object-classifier<br/>primary detect + track<br/>rf-detr · ConsumerPipeline]
 CP[crop-preparator<br/>OpenCV multi-ROI crops]
 end
 
-subgraph Contract["agentjetson/contract (this repo)"]
+subgraph Contract["agentjetson/core (this repo)"]
 ING[ingest<br/>gRPC :50052 → NATS publisher]
 NP[nats-publisher<br/>JetStream :50051]
 AGG[aggregator<br/>correlate + watchlist]

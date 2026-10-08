@@ -4,7 +4,7 @@ package mapx
 import (
 	"time"
 
-	"github.com/agentjetson/contract/pkg/persistence"
+	"github.com/agentjetson/core/pkg/persistence"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -62,7 +62,7 @@ func AlertToRows(a AlertFields, seq uint64) []persistence.DetectionRow {
 			FrameID: a.FrameID, TS: ts, Source: a.Source,
 			WatchlistHit: BoolU8(a.WatchlistHit), MatchedLabel: a.MatchedLabel,
 			E2ELatencyMs: a.E2ELatencyMs,
-			ClassID: d.ClassID, ClassName: d.ClassName, Confidence: d.Confidence,
+			ClassID:      d.ClassID, ClassName: d.ClassName, Confidence: d.Confidence,
 			X1: d.X1, Y1: d.Y1, X2: d.X2, Y2: d.Y2,
 			TrackID: d.TrackID, NatsSeq: seq,
 			Labels: labels,
@@ -156,26 +156,26 @@ func ObjectToRow(o ObjectFields, seq uint64) persistence.ObjectRow {
 
 // ResultFields ← detection.v1.CapabilityResult
 type ResultFields struct {
-	FrameID                    int64
-	Timestamp                  *timestamppb.Timestamp
-	Source                     string
-	Capability                 string
-	TrackID                    int32
-	ClassName                  string
-	Confidence                 float32
-	X1, Y1, X2, Y2             float32
-	OCRText                    string
-	OCRConfidence              float32
-	PlateX1, PlateY1           float32
-	PlateX2, PlateY2           float32
-	ProcessingMs               float64
-	VehicleClass               string
-	MakeModel                  string
-	Color                      string
-	SceneL1                    string
-	SceneL2                    string
-	Attributes                 map[string]string
-	Labels                     map[string]string
+	FrameID          int64
+	Timestamp        *timestamppb.Timestamp
+	Source           string
+	Capability       string
+	TrackID          int32
+	ClassName        string
+	Confidence       float32
+	X1, Y1, X2, Y2   float32
+	OCRText          string
+	OCRConfidence    float32
+	PlateX1, PlateY1 float32
+	PlateX2, PlateY2 float32
+	ProcessingMs     float64
+	VehicleClass     string
+	MakeModel        string
+	Color            string
+	SceneL1          string
+	SceneL2          string
+	Attributes       map[string]string
+	Labels           map[string]string
 }
 
 func ResultToRow(r ResultFields, seq uint64) persistence.ResultRow {

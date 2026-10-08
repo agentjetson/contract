@@ -3,7 +3,7 @@ syntax = "proto3";
 package nats.v1;
 
 option cc_enable_arenas = true;
-option go_package = "github.com/agentjetson/contract/gen/go/nats/v1;natsv1";
+option go_package = "github.com/agentjetson/core/gen/go/nats/v1;natsv1";
 
 import "audio/v1/transcript.proto";
 import "common/v1/error.proto";

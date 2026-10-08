@@ -1,4 +1,4 @@
-module github.com/agentjetson/contract/gen/go
+module github.com/agentjetson/core/gen/go
 
 go 1.22
 

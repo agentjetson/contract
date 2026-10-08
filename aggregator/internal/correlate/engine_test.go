@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	detectionv1 "github.com/agentjetson/contract/gen/go/detection/v1"
+	detectionv1 "github.com/agentjetson/core/gen/go/detection/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -32,7 +32,7 @@ func TestParseWatchlistCustom(t *testing.T) {
 
 func TestCorrelateObjectThenALPR(t *testing.T) {
 	var (
-		mu       sync.Mutex
+		mu        sync.Mutex
 		published [][]byte
 	)
 	publish := func(_ string, data []byte) error {

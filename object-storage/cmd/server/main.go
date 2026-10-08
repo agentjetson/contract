@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/agentjetson/contract/pkg/persistence"
+	"github.com/agentjetson/core/pkg/persistence"
 	"github.com/agentjetson/object-storage/internal/config"
 	"github.com/agentjetson/object-storage/internal/metadata"
 	"github.com/agentjetson/object-storage/internal/server"

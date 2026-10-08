@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agentjetson/contract/pkg/persistence"
+	"github.com/agentjetson/core/pkg/persistence"
 )
 
 // ClickHouseStore persists ObjectMeta via pkg/persistence (table object_meta).

@@ -1,5 +1,5 @@
 // Package persistence is the shared ClickHouse write/read layer for
-// agentjetson/contract services (clickhouse-consumer, object-storage,
+// agentjetson/core services (clickhouse-consumer, object-storage,
 // query-service). Schema is owned exclusively by seed/sql — this package
 // never issues CREATE TABLE.
 package persistence

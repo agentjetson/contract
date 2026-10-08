@@ -30,7 +30,7 @@ embed in their existing envelopes or ClickHouse rows.
 `voice/query-service`.  The edge producers stay C++; they only need a thin
 gRPC client (or the HTTP demo surface) to ship blobs.  Contracts live in
 `proto/storage/v1` and will move into the shared Buf package alongside the
-other `agentjetson/contract` protos.
+other `agentjetson/core` protos.
 
 ---
 
@@ -50,7 +50,7 @@ query-service ◄── ListObjects / GetPresignedURL ──────┘
        └── joins object_id / storage_key with cv.* + audio.transcript
 ```
 
-### Contracts to extend (`agentjetson/contract`)
+### Contracts to extend (`agentjetson/core`)
 
 | Existing proto | Extension needed |
 | --- | --- |
@@ -209,7 +209,7 @@ integration tests and the first demo path.
 2. **ObjectEnvelope / SceneResult / Transcript stay the stable event contracts.**  Object-storage is an additive evidence plane.
 3. **query-service remains a pure consumer.**  It may call GetPresignedURL / ListObjects; it never writes blobs.
 4. **Edge-first producers, central durable store.**  Heavy inference stays on-device; blobs land in object storage as soon as the network allows.
-5. **Contracts in `.proto` files**, generated with Buf, shared via `agentjetson/contract`.
+5. **Contracts in `.proto` files**, generated with Buf, shared via `agentjetson/core`.
 
 ---
 
@@ -224,4 +224,4 @@ integration tests and the first demo path.
 
 ---
 
-*Local trail marker.  The architecture map lives in `agentjetson/contract` (System Overview & Run Guide).  Keep both in sync when the evidence plane evolves.*
+*Local trail marker.  The architecture map lives in `agentjetson/core` (System Overview & Run Guide).  Keep both in sync when the evidence plane evolves.*

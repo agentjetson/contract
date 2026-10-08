@@ -3,7 +3,7 @@ syntax = "proto3";
 package scene.v1;
 
 option cc_enable_arenas = true;
-option go_package = "github.com/agentjetson/contract/gen/go/scene/v1;scenev1";
+option go_package = "github.com/agentjetson/core/gen/go/scene/v1;scenev1";
 
 import "google/protobuf/timestamp.proto";
 

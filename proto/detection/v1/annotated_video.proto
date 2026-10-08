@@ -3,7 +3,7 @@ syntax = "proto3";
 package detection.v1;
 
 option cc_enable_arenas = true;
-option go_package = "github.com/agentjetson/contract/gen/go/detection/v1;detectionv1";
+option go_package = "github.com/agentjetson/core/gen/go/detection/v1;detectionv1";
 
 import "detection/v1/detection.proto";
 

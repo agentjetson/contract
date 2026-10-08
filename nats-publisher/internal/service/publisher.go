@@ -10,8 +10,8 @@ import (
 
 	// Generated packages — produced by `make generate` at contract root.
 	// Paths match option go_package in the protos.
-	natsv1 "github.com/agentjetson/contract/gen/go/nats/v1"
-	commonv1 "github.com/agentjetson/contract/gen/go/common/v1"
+	commonv1 "github.com/agentjetson/core/gen/go/common/v1"
+	natsv1 "github.com/agentjetson/core/gen/go/nats/v1"
 )
 
 // Publisher implements nats.v1.NatsPublisherServiceServer.

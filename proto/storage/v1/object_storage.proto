@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package storage.v1;
 
-option go_package = "github.com/agentjetson/contract/gen/go/storage/v1;storagev1";
+option go_package = "github.com/agentjetson/core/gen/go/storage/v1;storagev1";
 option cc_enable_arenas = true;
 
 import "google/protobuf/timestamp.proto";
