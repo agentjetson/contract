@@ -12,3 +12,4 @@ data/
 .vscode/
 *.exe
 *.test
+.DS_Store
