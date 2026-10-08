@@ -2,26 +2,38 @@
 
 NATS JetStream → ClickHouse writer for AgentJetson.
 
-Replaces `core/src/clickhouse_consumer/main.cpp`. Schema is owned by
-`contract/seed/sql` (`make schema`); this service **never** runs `CREATE TABLE`.
+Schema is owned by `contract/seed/sql` (`make schema`); this service **never**
+runs `CREATE TABLE`.
 
 ## Subjects → tables
 
-| Subject | Table |
-|---------|--------|
-| `cv.object.>` | `cv_objects` |
-| `cv.result.>` | `cv_results` |
-| `cv.scene.>` | `cv_scenes` |
-| `cv.alert` | `cv_detections` |
-| `audio.transcript` | `audio_transcripts` |
+| Subject | Proto | Table | Rows |
+|---------|-------|-------|------|
+| `cv.object.>` | `detection.v1.ObjectEnvelope` | `cv_objects` | 1 |
+| `cv.result.>` | `detection.v1.CapabilityResult` | `cv_results` | 1 |
+| `cv.scene.>` | `scene.v1.SceneResult` | `cv_scenes` | 1 |
+| `cv.alert` | `detection.v1.Alert` | `cv_detections` | 1 per Detection |
+| `audio.transcript` | `audio.v1.Transcript` | `audio_transcripts` | 1 |
 
-See `seed/WRITE_SPEC.md`.
+JPEG / crop bytes are never stored. See `seed/WRITE_SPEC.md`.
 
-## Shared package
+## Reliability
 
-Writes go through `github.com/agentjetson/contract/pkg/persistence`.
-object-storage and query-service should import the same module for
-`object_meta` inserts and `query_*` SELECTs.
+- Decode via `proto.Unmarshal` into generated gen/go types.
+- Map through `internal/map` → `pkg/persistence` row types.
+- **Ack only after successful `Insert*` flush.** On insert failure messages are
+  `Nak`'d and redelivered. Poison-pill decode errors are Ack'd so they do not
+  block the durable.
+
+## Durables
+
+| Durable | Stream | Filter |
+|---------|--------|--------|
+| `ch-consumer-objects` | `CV_EVENTS` | `cv.object.>` |
+| `ch-consumer-results` | `CV_EVENTS` | `cv.result.>` |
+| `ch-consumer-scenes` | `CV_EVENTS` | `cv.scene.>` |
+| `ch-consumer-alerts` | `CV_ALERTS` | `cv.alert` |
+| `ch-consumer-audio` | `AUDIO_EVENTS` | `audio.transcript` |
 
 ## Env
 
@@ -42,31 +54,14 @@ object-storage and query-service should import the same module for
 ## Run
 
 ```bash
-# from contract root after make up && make schema
-cd clickhouse-consumer
-go mod tidy
-export NATS_URL=nats://localhost:4222
-export CLICKHOUSE_HOST=localhost
-go run ./cmd/consumer
+# Docker (from contract root)
+docker compose up -d --build clickhouse-consumer
+
+# Local
+make generate
+cd clickhouse-consumer && go mod tidy
+NATS_URL=nats://localhost:4222 CLICKHOUSE_HOST=localhost go run ./cmd/consumer
+
+# Map unit tests (no NATS/CH required)
+go test ./internal/map/ -count=1
 ```
-
-## Proto wiring
-
-`cmd/consumer/main.go` currently uses lightweight local message shapes so the
-tree builds without generated stubs. After `make generate` in the contract
-root, replace them with:
-
-```go
-detectionv1 "github.com/agentjetson/contract/gen/go/detection/v1"
-audiov1     "github.com/agentjetson/contract/gen/go/audio/v1"
-scenev1     "github.com/agentjetson/contract/gen/go/scene/v1"
-```
-
-and call `proto.Unmarshal` into the generated types, mapping via
-`internal/map`.
-
-## Core cutover
-
-1. Point core compose `CLICKHOUSE_HOST` at the contract ClickHouse instance.
-2. Remove the C++ `clickhouse` + `clickhouse-consumer` services from core.
-3. Drop `BUILD_CLICKHOUSE_CONSUMER` / inline `CREATE TABLE` in C++.
