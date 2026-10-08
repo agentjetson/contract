@@ -97,6 +97,23 @@ services:
       - "50051:50051"
     restart: unless-stopped
 
+  ingest:
+    build:
+      context: .
+      dockerfile: ingest/Dockerfile
+    command: ["/ingest-server"]
+    environment:
+      GRPC_ADDR: 0.0.0.0:50052
+      PUBLISHER_ADDR: nats-publisher:50051
+      # optional OTEL — wire when you add otel helpers to the Go services
+      # OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+      # OTEL_EXPORTER_OTLP_INSECURE: "true"
+    depends_on:
+      - nats-publisher
+    ports:
+      - "50052:50052"
+    restart: unless-stopped
+    
   minio:
     image: minio/minio:RELEASE.2024-10-02T17-50-41Z
     command: server /data --console-address ":9001"
