@@ -1,12 +1,25 @@
 # Generated Go protobufs
 
-Run from the contract repo root:
+**Required for `clickhouse-consumer` and any Go code that imports `gen/go/...`.**
 
 ```bash
-make generate   # requires buf CLI: https://buf.build/docs/installation
+# From contract repo root (requires buf: https://buf.build/docs/installation)
+make generate
 ```
 
-This writes `gen/go/**` from `proto/` via `buf.gen.yaml`.
+Writes `gen/go/**` from `proto/` via `buf.gen.yaml`.
+
+Then ensure the module stub exists:
+
+```bash
+cat > gen/go/go.mod <<'EOF'
+module github.com/agentjetson/contract/gen/go
+
+go 1.22
+
+require google.golang.org/protobuf v1.35.1
+EOF
+```
 
 `clickhouse-consumer` imports:
 
@@ -14,4 +27,7 @@ This writes `gen/go/**` from `proto/` via `buf.gen.yaml`.
 - `github.com/agentjetson/contract/gen/go/scene/v1`
 - `github.com/agentjetson/contract/gen/go/audio/v1`
 
-Minimal stubs may be committed for CI; always re-run `make generate` after proto changes.
+Docker builds run `buf generate` inside the image (see `clickhouse-consumer/Dockerfile`),
+so images do not depend on committed stubs. For local `go build`, always run `make generate` first.
+
+Do not commit incomplete hand-written stubs — Unmarshal will fail without real descriptors.
