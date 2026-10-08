@@ -173,6 +173,6 @@ func (d *DemoStore) QueryDetections(args models.QueryAlertsArgs) []models.Detect
 func (d *DemoStore) QueryTranscripts(args models.QueryTranscriptsArgs) []models.TranscriptHit {
 	now := time.Now().UTC()
 	return []models.TranscriptHit{
-		{Text: "Unit 12, vehicle matching description heading northbound.", Speaker: "dispatch", CameraID: "radio-1", Timestamp: now.Add(-20 * time.Second), Confidence: 0.95},
+		{Text: "Unit 12, vehicle matching description heading northbound.", Speaker: "dispatch", DeviceID: "radio-1", Timestamp: now.Add(-20 * time.Second), Confidence: 0.95},
 	}
 }
