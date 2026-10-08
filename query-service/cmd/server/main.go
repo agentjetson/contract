@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -30,7 +31,6 @@ func main() {
 
 	tsrv := tools.New(cfg, ch)
 
-	// Optional MCP stdio mode (JSON-line protocol for voice_agent / LLM tools).
 	if os.Getenv("MCP_STDIO") == "true" {
 		if err := mcp.ServeStdio(tsrv); err != nil {
 			slog.Error("mcp stdio", "err", err)
@@ -112,11 +112,9 @@ func handlePost(fn func(ctx context.Context, body []byte) (any, error)) http.Han
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		body := make([]byte, 0, 4096)
+		var body []byte
 		if r.Body != nil {
-			buf := make([]byte, 64*1024)
-			n, _ := r.Body.Read(buf)
-			body = buf[:n]
+			body, _ = io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), config.DefaultTimeout())
 		defer cancel()
