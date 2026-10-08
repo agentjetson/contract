@@ -6,89 +6,39 @@
 contract/
 ├── pkg/
 │   └── persistence/          # shared CH client + batch writers
-│       ├── client.go
-│       ├── rows.go
-│       ├── writer.go
-│       ├── time.go
-│       └── go.mod
-├── gen/go/                   # buf-generated protos (make generate)
+├── gen/go/                   # buf-generated protos (make generate / Docker)
 ├── clickhouse-consumer/      # JetStream pull → persistence
-│   ├── cmd/consumer/main.go  # protobuf decode wired
-│   ├── internal/...
-│   ├── Dockerfile
-│   └── go.mod
 ├── object-storage/           # uses persistence.InsertObjectMeta
-├── query-service/            # SELECTs via persistence; no ApplySchema in prod
+├── query-service/            # SELECTs; ApplySchema default false
+├── aggregator/               # Go correlator, durables agg-objects / agg-results
 └── seed/sql/                 # sole schema owner
 ```
 
 ## Done
 
 - [x] pkg/persistence API (InsertObjects/Results/Scenes/Detections/Transcripts/ObjectMeta)
-- [x] clickhouse-consumer protobuf decode via gen/go
+- [x] clickhouse-consumer protobuf decode (Docker runs `buf generate`)
 - [x] object-storage → persistence.InsertObjectMeta (+ MemoryStore DEMO_MODE)
 - [x] taxonomy single-source: contract/domain/taxonomy.yaml (scene-router aligned)
+- [x] **core cutover** — residual only (demo Alert `consumer`, `video_server`, `video_viewer`)
+  - [x] No ClickHouse service in core (uses contract)
+  - [x] No C++ clickhouse-consumer / aggregator in core
+  - [x] No inline `CREATE TABLE` in core (read-only SELECTs on `cv_detections`)
+  - [x] `CLICKHOUSE_*` / `NATS_URL` point at contract stack
+  - [x] JetStream streams match `domain/nats-subjects.yaml`
+  - [x] Aggregator durables `agg-objects` / `agg-results` (contract/aggregator)
 
 ## Remaining
 
 ### query-service
 
 1. Prefer `persistence.Open` + `ch.Conn()` for SELECTs against
-   `query_cv_results`, `query_cv_objects`, `query_cv_scenes`,
-   `query_cv_detections`, `query_audio_transcripts` (see `003_views.sql`).
-2. Default `ApplySchema=false` (schema owned by seed/sql only).
-3. Same `replace` directive for pkg/persistence.
+   `query_cv_*` / `query_audio_transcripts` views (`003_views.sql`).
+2. `APPLY_SCHEMA` already defaults to `false`.
+3. Same `replace` for pkg/persistence (already in go.mod).
 
-### docker-compose.yml (contract) snippet
+### Known compose friction (contract)
 
-```yaml
-  clickhouse-consumer:
-    build:
-      context: .
-      dockerfile: clickhouse-consumer/Dockerfile
-    environment:
-      NATS_URL: ${NATS_URL:-nats://host.docker.internal:4222}
-      CLICKHOUSE_HOST: clickhouse
-      CLICKHOUSE_PORT: "9000"
-      CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: pass
-      CLICKHOUSE_DB: default
-    depends_on:
-      clickhouse:
-        condition: service_healthy
-    restart: unless-stopped
-```
-
-NATS still lives in core compose (or a shared stack). Point `NATS_URL`
-at that instance.
-
-### core changes checklist
-
-- [ ] Remove `clickhouse` service (use contract's).
-- [ ] Remove `clickhouse-consumer` C++ binary / CMake target.
-- [ ] Drop inline `CREATE TABLE` from any remaining C++ paths.
-- [ ] Set `CLICKHOUSE_HOST` for video_server etc. to the contract host.
-- [ ] Ensure JetStream streams `CV_EVENTS`, `CV_ALERTS`, `AUDIO_EVENTS`
-      match `domain/nats-subjects.yaml`.
-
-### aggregator (Go)
-
-New service under `contract/aggregator/`. Pure NATS correlator — no CH writes.
-
-```yaml
-  aggregator:
-    build:
-      context: .
-      dockerfile: aggregator/Dockerfile
-    environment:
-      NATS_URL: ${NATS_URL:-nats://host.docker.internal:4222}
-      STREAM_EVENTS: CV_EVENTS
-      STREAM_ALERTS: CV_ALERTS
-      EMIT_TIMEOUT_MS: "800"
-    restart: unless-stopped
-```
-
-Core cutover:
-- [ ] Swap core compose `aggregator` image/command to this binary
-- [ ] Remove `core/src/aggregator` + CMake target
-- [ ] Keep durable names `agg-objects` / `agg-results` for zero-downtime consumer continuity
+- MinIO and ClickHouse both default host port **9000** — remap MinIO API port if binding both on localhost.
+- `voice-query-service` name vs `query-service` directory — rename for consistency when convenient.
+- `core_net` external network assumption — core compose now uses `agentjetson-contract_default`.
