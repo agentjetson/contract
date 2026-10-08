@@ -101,14 +101,33 @@ services:
       - core_net
 
   query-service:
+    build:
+      context: ./query-service
+      dockerfile: Dockerfile
+    container_name: voice-query-service
+    ports:
+      - "8080:8080"
     environment:
-      DEMO_MODE: "false"
-      CLICKHOUSE_HOST: clickhouse
-      CLICKHOUSE_PORT: "9000"
-      NATS_URL: nats://nats:4222
-      NATS_ENABLE_LIVE: "true"
-      APPLY_SCHEMA: "true"
-    external_links:
+      HTTP_ADDR: ":8080"
+      DEMO_MODE: "${DEMO_MODE:-true}"
+      CLICKHOUSE_HOST: "${CLICKHOUSE_HOST:-localhost}"
+      CLICKHOUSE_PORT: "${CLICKHOUSE_PORT:-9000}"
+      CLICKHOUSE_USER: "${CLICKHOUSE_USER:-default}"
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-pass}"
+      CLICKHOUSE_DATABASE: "${CLICKHOUSE_DATABASE:-default}"
+      APPLY_SCHEMA: "${APPLY_SCHEMA:-true}"
+      NATS_URL: "${NATS_URL:-nats://localhost:4222}"
+      NATS_ENABLE_LIVE: "${NATS_ENABLE_LIVE:-false}"
+      DEFAULT_TIME_WINDOW_SEC: "${DEFAULT_TIME_WINDOW_SEC:-30}"
+      DEFAULT_LIMIT: "${DEFAULT_LIMIT:-5}"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    depends_on:
       - clickhouse
       - nats
     networks:
