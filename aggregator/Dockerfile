@@ -1,12 +1,23 @@
 # syntax=docker/dockerfile:1.7
+# Build from monorepo root:
+#   docker build -f aggregator/Dockerfile -t aggregator .
 FROM golang:1.22-bookworm AS builder
 WORKDIR /src
 
-COPY gen/go /src/gen/go
+RUN curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.47.2/buf-Linux-x86_64" \
+    -o /usr/local/bin/buf && chmod +x /usr/local/bin/buf
+
+COPY buf.yaml buf.gen.yaml /src/
+COPY proto /src/proto
 COPY aggregator /src/aggregator
 
+# gen/go is not committed — generate at build time
+RUN buf generate
+RUN printf 'module github.com/agentjetson/contract/gen/go\n\ngo 1.22\n\nrequire google.golang.org/protobuf v1.36.1\n' \
+    > /src/gen/go/go.mod
+
 WORKDIR /src/aggregator
-RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o /out/aggregator ./cmd/aggregator
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/aggregator ./cmd/aggregator
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=builder /out/aggregator /aggregator
