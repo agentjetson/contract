@@ -36,7 +36,10 @@ func main() {
 		os.Exit(1)
 	}
 	// Alerts stream is owned by nats_publisher; we only publish.
-	_ = natsjs.WaitStream(js, cfg.StreamAlerts, 5*time.Second)
+	if err := natsjs.WaitStream(js, cfg.StreamAlerts, 30*time.Second); err != nil {
+		slog.Warn("stream alerts not ready yet — publishes may fail until nats-publisher starts",
+			"stream", cfg.StreamAlerts, "err", err)
+	}
 
 	objSub, err := natsjs.EnsurePull(js, cfg.StreamEvents, "agg-objects", "cv.object.>")
 	if err != nil {
@@ -70,6 +73,7 @@ func main() {
 	slog.Info("aggregator ready",
 		"nats", cfg.NATSURL,
 		"stream", cfg.StreamEvents,
+		"durables", []string{"agg-objects", "agg-results"},
 		"emit_timeout_ms", cfg.EmitTimeout.Milliseconds(),
 		"subjects", []string{"cv.object.>", "cv.result.>"},
 		"publish", "cv.alert",
@@ -86,20 +90,21 @@ func main() {
 		case <-ticker.C:
 			engine.Tick()
 		default:
+			// Sequential drains; Fetch blocks up to FetchTimeout each,
+			// so this is not a tight spin.
+			drain(objSub, cfg.FetchBatch, cfg.FetchTimeout, func(msg *nats.Msg) {
+				if strings.HasPrefix(msg.Subject, "cv.object.") {
+					engine.OnObject(msg.Data)
+				}
+				_ = msg.Ack()
+			})
+			drain(resSub, cfg.FetchBatch, cfg.FetchTimeout, func(msg *nats.Msg) {
+				if strings.HasPrefix(msg.Subject, "cv.result.") {
+					engine.OnResult(msg.Data)
+				}
+				_ = msg.Ack()
+			})
 		}
-
-		drain(objSub, cfg.FetchBatch, cfg.FetchTimeout, func(msg *nats.Msg) {
-			if strings.HasPrefix(msg.Subject, "cv.object.") {
-				engine.OnObject(msg.Data)
-			}
-			_ = msg.Ack()
-		})
-		drain(resSub, cfg.FetchBatch, cfg.FetchTimeout, func(msg *nats.Msg) {
-			if strings.HasPrefix(msg.Subject, "cv.result.") {
-				engine.OnResult(msg.Data)
-			}
-			_ = msg.Ack()
-		})
 	}
 }
 

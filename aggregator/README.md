@@ -3,10 +3,10 @@
 Correlates `ObjectEnvelope` + `CapabilityResult` by `(frame_id, track_id)`,
 applies the watchlist, and publishes `detection.v1.Alert` to `cv.alert`.
 
-Go port of `core/src/aggregator/main.cpp`. Replaces the C++ binary once
-cut over in compose.
+Pure NATS — **no ClickHouse writes**. Persistence is `clickhouse-consumer`
+(`cv.alert` → `cv_detections`).
 
-## Behaviour (parity with C++)
+## Behaviour
 
 | Input subject | Action |
 |---------------|--------|
@@ -32,31 +32,34 @@ Override with `WATCHLIST=person:0.6,car:0.5,ABC123:0.7`.
 | `PRUNE_EVERY_MS` | `1000` |
 | `WATCHLIST` | (built-in defaults) |
 
+## JetStream
+
+| Durable | Stream | Filter |
+|---------|--------|--------|
+| `agg-objects` | `CV_EVENTS` | `cv.object.>` |
+| `agg-results` | `CV_EVENTS` | `cv.result.>` |
+
+Streams are created by **nats-publisher** (`EnsureAllStreams` from
+`domain/nats-subjects.yaml`). Aggregator waits for `CV_EVENTS` (required)
+and warns if `CV_ALERTS` is late.
+
 ## Run
 
 ```bash
-# from contract root (after NATS + nats_publisher are up)
-cd aggregator
-go mod tidy
-export NATS_URL=nats://localhost:4222
-go run ./cmd/aggregator
+# Docker (from contract root)
+docker compose up -d --build aggregator
+
+# Local (needs generated stubs)
+make generate
+cd aggregator && go mod tidy
+NATS_URL=nats://localhost:4222 go run ./cmd/aggregator
+
+# Tests (need gen/go)
+go test ./internal/correlate/ -count=1
 ```
-
-Requires generated stubs (`make generate` at contract root) so
-`github.com/agentjetson/contract/gen/go/detection/v1` resolves.
-
-## Core cutover
-
-1. Build/run this service instead of `core`’s `/app/aggregator`.
-2. Point compose `command` / image at the Go binary.
-3. Remove `src/aggregator` and its CMake target from `core/`.
-4. Keep `clickhouse-consumer` as the durable sink for `cv.alert` → `cv_detections`.
 
 ## Design notes
 
-- **No ClickHouse writes** — pure NATS correlation + publish. Persistence
-  stays in `pkg/persistence` via `clickhouse-consumer`.
-- **Durable pull consumers** `agg-objects` / `agg-results` on `CV_EVENTS`
-  (same names as the C++ version for in-place swap).
-- **Publish** uses JetStream `Publish("cv.alert", …)`; stream ownership
-  remains with `nats_publisher` (`CV_ALERTS`).
+- Durable names match the former C++ aggregator for zero-downtime swap.
+- Publish subject is always `cv.alert` (proto `detection.v1.Alert`).
+- Core residual stack no longer ships an aggregator binary.
