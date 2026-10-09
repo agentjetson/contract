@@ -18,7 +18,7 @@ consume this schema.
 
 ## Bring-up (ClickHouse only)
 
-From the contract repo root:
+From the core repo root:
 
 ```bash
 make up          # docker compose up clickhouse

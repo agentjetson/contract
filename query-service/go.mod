@@ -4,7 +4,7 @@ go 1.26
 
 // HTTP (C++ voice_agent via libcurl) + MCP JSON-line.
 // Live ClickHouse via pkg/persistence (Conn + SELECTs on query_* views).
-// Do NOT call ApplySchema — schema is owned by contract/seed/sql (make schema).
+// Do NOT call ApplySchema — schema is owned by core/seed/sql (make schema).
 
 require github.com/agentjetson/core/pkg/persistence v0.0.0
 

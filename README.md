@@ -53,10 +53,10 @@ contract (Go):  ingest → nats-publisher → JetStream
 | `SceneResult`      | scene-router / temporal → ingest        | `cv.scene.<level1>` / `cv.scene.result` | **scene-router**                    |
 | `ObjectEnvelope`   | classifier / preparator → ingest        | `cv.object.<class>` / `IngestObject`    | **stable**                          |
 | `CapabilityResult` | specialists → aggregator                | `cv.result.<capability>`                | specialists                         |
-| `Alert`            | aggregator → consumers                  | `cv.alert`                              | **contract/aggregator**             |
+| `Alert`            | aggregator → consumers                  | `cv.alert`                              | **core/aggregator**             |
 | `Transcript`       | audio-client → ingest                   | `IngestTranscript` / `audio.transcript` | **voice/audio-client**              |
-| **Query APIs**     | query-service → ClickHouse / NATS       | HTTP `/v1/query/*` + MCP tools          | **contract/query-service**          |
-| **Object storage** | edge producers → object-storage         | `PutObject` / HTTP `/v1/objects`        | **contract/object-storage**         |
+| **Query APIs**     | query-service → ClickHouse / NATS       | HTTP `/v1/query/*` + MCP tools          | **core/query-service**          |
+| **Object storage** | edge producers → object-storage         | `PutObject` / HTTP `/v1/objects`        | **core/object-storage**         |
 
 **ObjectEnvelope remains the cornerstone for detection.** Everything upstream of it can evolve. Everything downstream must not care how the envelope was produced.
 
@@ -111,7 +111,7 @@ contract (Go):  ingest → nats-publisher → JetStream
 | Directory | Role |
 | --------- | ---- |
 | `audio-client/` | Edge STT live client → gRPC `:50054` + optional ingest |
-| `agent/` | Interactive agent (KWS/VAD → STT → LLM → TTS); calls **contract/query-service** |
+| `agent/` | Interactive agent (KWS/VAD → STT → LLM → TTS); calls **core/query-service** |
 
 Shared: `scripts/download_models.sh`, `models/` (gitignored).
 
@@ -271,11 +271,11 @@ make up && make schema && make seed
 
 | Subject | Proto | Table | Writer |
 | ------- | ----- | ----- | ------ |
-| `cv.object.>` | `detection.v1.ObjectEnvelope` | `cv_objects` | **contract/clickhouse-consumer** (in progress) |
-| `cv.result.>` | `detection.v1.CapabilityResult` | `cv_results` | **contract/clickhouse-consumer** (in progress) |
-| `cv.scene.>` | `scene.v1.SceneResult` | `cv_scenes` | **contract/clickhouse-consumer** (in progress) |
-| `cv.alert` | `detection.v1.Alert` | `cv_detections` | **contract/clickhouse-consumer** |
-| `audio.transcript` | `audio.v1.Transcript` | `audio_transcripts` | **contract/clickhouse-consumer** |
+| `cv.object.>` | `detection.v1.ObjectEnvelope` | `cv_objects` | **core/clickhouse-consumer** (in progress) |
+| `cv.result.>` | `detection.v1.CapabilityResult` | `cv_results` | **core/clickhouse-consumer** (in progress) |
+| `cv.scene.>` | `scene.v1.SceneResult` | `cv_scenes` | **core/clickhouse-consumer** (in progress) |
+| `cv.alert` | `detection.v1.Alert` | `cv_detections` | **core/clickhouse-consumer** |
+| `audio.transcript` | `audio.v1.Transcript` | `audio_transcripts` | **core/clickhouse-consumer** |
 
 `query_*` views (`seed/sql/003_views.sql`) alias columns for query-service. Until full writers land, use `make seed` or `DEMO_MODE=true`.
 

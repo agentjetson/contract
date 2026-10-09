@@ -1,4 +1,4 @@
-# AgentJetson contract stack.
+# AgentJetson core stack.
 #
 #   make up          # or: docker compose up -d
 #   make schema      # re-apply DDL (idempotent)
@@ -8,7 +8,7 @@
 #   CLICKHOUSE_HOST / PORT / USER / PASSWORD / DB
 #   NATS_URL
 
-name: agentjetson-contract
+name: agentjetson-core
 
 services:
   clickhouse:

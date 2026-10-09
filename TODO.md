@@ -3,7 +3,7 @@
 ## Layout in agentjetson/core
 
 ```
-contract/
+core/
 ├── pkg/
 │   └── persistence/          # shared CH client + batch writers
 ├── gen/go/                   # buf-generated protos (make generate / Docker)
@@ -19,7 +19,7 @@ contract/
 - [x] pkg/persistence API (InsertObjects/Results/Scenes/Detections/Transcripts/ObjectMeta)
 - [x] clickhouse-consumer protobuf decode (Docker runs `buf generate`)
 - [x] object-storage → persistence.InsertObjectMeta (+ MemoryStore DEMO_MODE)
-- [x] taxonomy single-source: contract/domain/taxonomy.yaml (scene-router aligned)
+- [x] taxonomy single-source: core/domain/taxonomy.yaml (scene-router aligned)
 - [x] **core cutover** — residual only (demo Alert `consumer`, `video_server`, `video_viewer`)
 - [x] **query-service**
   - [x] `persistence.Open` + `Conn()` for SELECTs

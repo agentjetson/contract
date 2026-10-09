@@ -1,6 +1,6 @@
 # Scaffolding only. Prefer generating against the root module:
 #   deps: [buf.build/agentjetson/core]
-# or run `make generate` from the contract root.
+# or run `make generate` from the core root.
 version: v2
 modules:
   - path: ../proto

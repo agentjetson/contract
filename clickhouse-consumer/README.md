@@ -2,7 +2,7 @@
 
 NATS JetStream → ClickHouse writer for AgentJetson.
 
-Schema is owned by `contract/seed/sql` (`make schema`); this service **never**
+Schema is owned by `core/seed/sql` (`make schema`); this service **never**
 runs `CREATE TABLE`.
 
 ## Subjects → tables

@@ -25,7 +25,7 @@ Shared helpers live in `pkg/natsjs` so `clickhouse-consumer` (and aggregator) ca
 ## Build & run
 
 ```bash
-# from contract root
+# from core root
 make generate          # produces gen/go (required)
 cd nats-publisher
 go mod tidy
@@ -47,5 +47,5 @@ docker build -f nats-publisher/Dockerfile -t nats-publisher .
 After this lands:
 
 1. Remove C++ `nats_publisher` binary / CMake target from `agentjetson/core`.
-2. Point core `docker-compose` `nats-publisher` service at this image (or run it from contract compose).
+2. Point core `docker-compose` `nats-publisher` service at this image (or run it from core compose).
 3. Edge clients (`ingest_server`, specialists) keep calling the same gRPC surface.

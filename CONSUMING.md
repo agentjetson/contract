@@ -45,7 +45,7 @@ Do not invent a second metadata schema.
 1. Replace `core/proto/**` with this tree (submodule or copy-from-tag).
 2. Drop inline `CREATE TABLE` in `src/clickhouse_consumer/main.cpp`.
 3. Remove the `clickhouse` service from `core/docker-compose.yml`. Set
-   `CLICKHOUSE_HOST` to the instance started by `contract/docker-compose.yml`.
+   `CLICKHOUSE_HOST` to the instance started by `core/docker-compose.yml`.
 4. Extend the consumer to write `cv_objects` / `cv_results` / `cv_scenes`
    per `seed/WRITE_SPEC.md`. `cv_detections` + `audio_transcripts` already match.
 5. Add `IngestScene` / `PublishScene` (already in these protos).

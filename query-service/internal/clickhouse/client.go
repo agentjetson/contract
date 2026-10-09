@@ -34,7 +34,7 @@ func New(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 	if cfg.ApplySchema {
-		slog.Warn("APPLY_SCHEMA is ignored — schema is owned by contract/seed/sql (make schema)")
+		slog.Warn("APPLY_SCHEMA is ignored — schema is owned by core/seed/sql (make schema)")
 	}
 	return &Client{cfg: cfg, ch: ch}, nil
 }
