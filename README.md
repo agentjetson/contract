@@ -35,7 +35,7 @@ See [`CONSUMING.md`](CONSUMING.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`TODO
 edge C++ (camera / scene / detect / specialists)
         │  IngestObject / IngestScene / IngestTranscript
         ▼
-contract (Go):  ingest → nats-publisher → JetStream
+core (Go):  ingest → nats-publisher → JetStream
                       │
                       ├─► specialists (alpr, …) → cv.result.*
                       ├─► aggregator → cv.alert
@@ -76,17 +76,17 @@ contract (Go):  ingest → nats-publisher → JetStream
 
 | Repository | Visibility | Role | Depends on |
 | ---------- | ---------- | ---- | ---------- |
-| **[contract](https://github.com/agentjetson/core)** (this repo) | public | protos, DDL, domain, **ingest, nats-publisher, aggregator, clickhouse-consumer, query-service, object-storage** | Docker Compose |
-| [core](https://github.com/agentjetson/core) | public | residual: demo Alert `consumer`, `video_server`, `video_viewer` | contract ClickHouse |
+| **[core](https://github.com/agentjetson/core)** (this repo) | public | protos, DDL, domain, **ingest, nats-publisher, aggregator, clickhouse-consumer, query-service, object-storage** | Docker Compose |
+| [core](https://github.com/agentjetson/core) | public | residual: demo Alert `consumer`, `video_server`, `video_viewer` | core ClickHouse |
 | [rf-detr](https://github.com/agentjetson/rf-detr) | **private** | Shared C++ RF-DETR ONNX library | OpenCV, ONNX Runtime |
 | [camera-connector](https://github.com/agentjetson/camera-connector) | **private** | Thin multi-source capture (V4L2 / RTSP / file) | OpenCV |
 | [camera-connector-onvif](https://github.com/agentjetson/camera-connector-onvif) | public | ONVIF discovery + stream resolve on top of camera-connector | libonvif, libcurl |
-| [object-classifier](https://github.com/agentjetson/object-classifier) | public | Primary detect + track → ObjectEnvelope | **rf-detr**, contract ingest |
+| [object-classifier](https://github.com/agentjetson/object-classifier) | public | Primary detect + track → ObjectEnvelope | **rf-detr**, core ingest |
 | [crop-preparator](https://github.com/agentjetson/crop-preparator) | public | Multi-ROI crops (demo; production wiring TODO) | OpenCV |
 | [scene-router](https://github.com/agentjetson/scene-router) | public | Hierarchical scene + specialist gating | ONNX (SigLIP 2 / DINOv3) |
 | [temporal-classifier](https://github.com/agentjetson/temporal-classifier) | public | Temporal refine (MoViNet) | scene-router, ONNX |
 | [alpr-consumer](https://github.com/agentjetson/alpr-consumer) | public | ALPR specialist | NATS, **rf-detr**, Fast-Plate-OCR |
-| **[voice](https://github.com/agentjetson/voice)** | public | C++ speech (audio-client + agent) | contract ingest + query-service, sherpa-onnx |
+| **[voice](https://github.com/agentjetson/voice)** | public | C++ speech (audio-client + agent) | core ingest + query-service, sherpa-onnx |
 
 ### This repo layout
 
@@ -159,7 +159,7 @@ export LD_LIBRARY_PATH=$SHERPA_ONNX_ROOT/lib:$LD_LIBRARY_PATH
 
 ```bash
 git clone https://github.com/agentjetson/core.git
-cd contract
+cd core
 
 make up          # full compose: nats, clickhouse, ingest, nats-publisher,
                  # aggregator, clickhouse-consumer, minio, object-storage, query-service
@@ -198,7 +198,7 @@ go run ./cmd/server --stdio
 #        query_detections, query_transcripts, health
 ```
 
-### 2. alpr-consumer (specialist — same NATS as contract)
+### 2. alpr-consumer (specialist)
 
 ```bash
 git clone https://github.com/agentjetson/alpr-consumer.git
@@ -227,13 +227,12 @@ INGEST_ADDR=localhost:50052 ORT_DEVICE=gpu \
   ./build/object_classifier --in-process sample.mp4 models/rf-detr-nano.onnx
 ```
 
-### 4. Core residual (optional — demo Alert consumer + video path)
+### 4. Video path
 
 ```bash
-git clone https://github.com/agentjetson/core.git
-cd core
-# Point CLICKHOUSE_* at the contract instance
-docker compose up -d consumer video_server video_viewer
+git clone https://github.com/agentjetson/video.git
+cd video
+docker compose up -d video_server video_viewer
 ```
 
 ### 5. Voice path

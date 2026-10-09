@@ -8,7 +8,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"google.golang.org/protobuf/proto"
 
-	// Generated packages — produced by `make generate` at contract root.
+	// Generated packages — produced by `make generate` at core root.
 	// Paths match option go_package in the protos.
 	commonv1 "github.com/agentjetson/core/gen/go/common/v1"
 	natsv1 "github.com/agentjetson/core/gen/go/nats/v1"

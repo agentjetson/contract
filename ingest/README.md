@@ -25,7 +25,7 @@ connection; that lives in `nats-publisher`.
 ## Build & run
 
 ```bash
-# from contract root
+# from core root
 make generate          # produces gen/go (required)
 cd ingest
 go mod tidy
@@ -48,6 +48,6 @@ After this lands:
 
 1. Remove C++ `ingest_server` binary / CMake target from `agentjetson/core`.
 2. Point core `docker-compose` `ingest` service at this image (or run it from
-   contract compose).
+   core compose).
 3. Edge clients (`object-classifier`, `scene-router`, `audio-client`, specialists)
    keep calling the same gRPC surface on `:50052`.

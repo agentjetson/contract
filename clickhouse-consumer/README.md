@@ -54,7 +54,7 @@ JPEG / crop bytes are never stored. See `seed/WRITE_SPEC.md`.
 ## Run
 
 ```bash
-# Docker (from contract root)
+# Docker (from core root)
 docker compose up -d --build clickhouse-consumer
 
 # Local

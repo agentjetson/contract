@@ -14,7 +14,7 @@ import (
 )
 
 // Config holds native-protocol connection parameters.
-// Env names match core compose and contract Makefile:
+// Env names match core compose and Makefile:
 //
 //	CLICKHOUSE_HOST, CLICKHOUSE_PORT, CLICKHOUSE_USER,
 //	CLICKHOUSE_PASSWORD, CLICKHOUSE_DB

@@ -1,4 +1,4 @@
-// Package mapx converts contract protos into persistence row types.
+// Package mapx converts core protos into persistence row types.
 package mapx
 
 import (

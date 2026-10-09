@@ -46,7 +46,7 @@ and warns if `CV_ALERTS` is late.
 ## Run
 
 ```bash
-# Docker (from contract root)
+# Docker (from core root)
 docker compose up -d --build aggregator
 
 # Local (needs generated stubs)

@@ -1,5 +1,5 @@
-# AgentJetson contract — ClickHouse adapter
-# Spins up ClickHouse only. Schema lives here, not in core or query-service.
+# AgentJetson core
+# Spins up ClickHouse. Schema lives here.
 SHELL := /usr/bin/env bash
 .SHELLFLAGS := -euo pipefail -c
 
@@ -18,7 +18,7 @@ CH_CLIENT = $(COMPOSE) exec -T clickhouse clickhouse-client \
 .PHONY: help up down reset logs ps ping schema seed client generate
 
 help:
-	@echo "AgentJetson contract — ClickHouse adapter"
+	@echo "AgentJetson core"
 	@echo ""
 	@echo "  make up         Start ClickHouse (8123 HTTP / 9000 native)"
 	@echo "  make schema     Apply DDL (idempotent CREATE IF NOT EXISTS + views)"

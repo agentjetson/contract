@@ -57,7 +57,7 @@ query-service ◄── ListObjects / GetPresignedURL ──────┘
 | `audio/v1/transcript.proto` | Optional `string object_id = 12` / `string storage_key = 13` so a transcript row can point at the raw audio blob |
 | `detection/v1/detection.proto` (`ObjectEnvelope`, `Alert`) | Optional `string recording_object_id` / `string snapshot_object_id` for evidence packaging |
 | `capture/v1/frame.proto` | Optional `payload_ref` already exists — prefer object-storage keys over ad-hoc shm paths for durable refs |
-| **New** `storage/v1/object_storage.proto` | This repo (canonical definition; copy or submodule into `contract` when stabilised) |
+| **New** `storage/v1/object_storage.proto` | This repo |
 
 No change is required to the stable `ObjectEnvelope` / `SceneResult` /
 `CapabilityResult` publish path.  Object-storage is additive.
@@ -176,27 +176,16 @@ examples:
 
 ## Proto & code generation
 
-```
-proto/
-  common/v1/error.proto          # vendored from contract
-  storage/v1/object_storage.proto
-```
-
-When the shared Buf workspace lands:
-
 ```bash
 buf generate   # produces gen/storage/v1 + gen/common/v1
 # then replace the hand-written types in internal/server with the generated stubs
 ```
 
-Until then the HTTP surface + hand-written service types are fully usable for
-integration tests and the first demo path.
-
 ---
 
 ## Integration checklist
 
-1. **audio-client** (optional): after a final transcript, also `PutObject(AUDIO_TRANSCRIPT)` with the raw audio window; store returned `object_id` on the `Transcript` (once the field is added in contract).
+1. **audio-client** (optional): after a final transcript, also `PutObject(AUDIO_TRANSCRIPT)` with the raw audio window; store returned `object_id` on the `Transcript` (once the field is added in core).
 2. **camera / recording path**: event or continuous recorder calls `PutObject(CAMERA_RECORDING)` and attaches `object_id` to the correlating `Alert` or a new evidence table.
 3. **query-service**: add MCP / HTTP tools `query_recordings`, `get_presigned_url` that read `object_meta` (and optionally live ListObjects).
 4. **core clickhouse_consumer**: no change required until you want NATS-driven archival; the preferred path is direct gRPC/HTTP from the edge producer.

@@ -1,9 +1,9 @@
 # pkg/persistence
 
-Shared ClickHouse native client for AgentJetson contract services.
+Shared ClickHouse client for AgentJetson core services.
 
 **Schema is never created here.** Apply DDL with `make schema` from the
-contract root (`seed/sql/002_tables.sql` + `003_views.sql`).
+core root (`seed/sql/002_tables.sql` + `003_views.sql`).
 
 ## API
 
