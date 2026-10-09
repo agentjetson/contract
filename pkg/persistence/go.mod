@@ -1,6 +1,6 @@
 module github.com/agentjetson/core/pkg/persistence
 
-go 1.22
+go 1.26
 
 require github.com/ClickHouse/clickhouse-go/v2 v2.30.0
 

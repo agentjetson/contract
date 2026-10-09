@@ -19,7 +19,6 @@ type WatchEntry struct {
 	MinConf float32
 }
 
-// DefaultWatchlist mirrors the former C++ pipeline defaults.
 func DefaultWatchlist() []WatchEntry {
 	return []WatchEntry{
 		{Label: "person", MinConf: 0.55},

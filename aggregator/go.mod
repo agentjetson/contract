@@ -1,6 +1,6 @@
 module github.com/agentjetson/core/aggregator
 
-go 1.22
+go 1.26
 
 require (
 	github.com/agentjetson/core/gen/go v0.0.0
