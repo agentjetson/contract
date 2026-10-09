@@ -1,7 +1,5 @@
 # AgentJetson — System Overview & Run Guide
 
-**Intelligence at the edge of every encounter.**
-
 This document is the single source of truth for how the AgentJetson edge CV + audio pipeline is structured and how to bring the full stack up. Treat it as the breadcrumb trail: follow the dependency order and the architecture will stay coherent as we expand.
 
 **Primary vision backend:** [agentjetson/rf-detr](https://github.com/agentjetson/rf-detr) (RF-DETR via ONNX Runtime — TensorRT → CUDA → CPU) — *private*.
@@ -25,7 +23,7 @@ This document is the single source of truth for how the AgentJetson edge CV + au
 
 Other repos consume; they do not keep a private copy of protos or DDL.
 
-See [`CONSUMING.md`](CONSUMING.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`TODO.md`](TODO.md), [`seed/README.md`](seed/README.md), [`seed/WRITE_SPEC.md`](seed/WRITE_SPEC.md).
+See [`CONSUMING.md`](CONSUMING.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`seed/README.md`](seed/README.md), [`seed/WRITE_SPEC.md`](seed/WRITE_SPEC.md).
 
 ---
 
@@ -74,35 +72,36 @@ core (Go):  ingest → nats-publisher → JetStream
 
 ## Repository map
 
-| Repository | Visibility | Role | Depends on |
-| ---------- | ---------- | ---- | ---------- |
+| Repository | Role | Depends on |
+| ---------- | ---- | ---------- |
 | **[core](https://github.com/agentjetson/core)** (this repo) | public | protos, DDL, domain, **ingest, nats-publisher, aggregator, clickhouse-consumer, query-service, object-storage** | Docker Compose |
-| [core](https://github.com/agentjetson/core) | public | residual: demo Alert `consumer`, `video_server`, `video_viewer` | core ClickHouse |
-| [rf-detr](https://github.com/agentjetson/rf-detr) | **private** | Shared C++ RF-DETR ONNX library | OpenCV, ONNX Runtime |
-| [camera-connector](https://github.com/agentjetson/camera-connector) | **private** | Thin multi-source capture (V4L2 / RTSP / file) | OpenCV |
-| [camera-connector-onvif](https://github.com/agentjetson/camera-connector-onvif) | public | ONVIF discovery + stream resolve on top of camera-connector | libonvif, libcurl |
-| [object-classifier](https://github.com/agentjetson/object-classifier) | public | Primary detect + track → ObjectEnvelope | **rf-detr**, core ingest |
-| [crop-preparator](https://github.com/agentjetson/crop-preparator) | public | Multi-ROI crops (demo; production wiring TODO) | OpenCV |
-| [scene-router](https://github.com/agentjetson/scene-router) | public | Hierarchical scene + specialist gating | ONNX (SigLIP 2 / DINOv3) |
-| [temporal-classifier](https://github.com/agentjetson/temporal-classifier) | public | Temporal refine (MoViNet) | scene-router, ONNX |
-| [alpr-consumer](https://github.com/agentjetson/alpr-consumer) | public | ALPR specialist | NATS, **rf-detr**, Fast-Plate-OCR |
-| **[voice](https://github.com/agentjetson/voice)** | public | C++ speech (audio-client + agent) | core ingest + query-service, sherpa-onnx |
+| [video](https://github.com/agentjetson/video) | C++ demo Alert `consumer`, `video_server`, `video_viewer` | core ClickHouse |
+| [rf-detr](https://github.com/agentjetson/rf-detr) | Shared C++ RF-DETR ONNX library | OpenCV, ONNX Runtime |
+| [camera-connector](https://github.com/agentjetson/camera-connector) | Thin multi-source capture (V4L2 / RTSP / file) | OpenCV |
+| [camera-connector-onvif](https://github.com/agentjetson/camera-connector-onvif) | ONVIF discovery + stream resolve on top of camera-connector | libonvif, libcurl |
+| [object-classifier](https://github.com/agentjetson/object-classifier) | Primary detect + track → ObjectEnvelope | **rf-detr**, core ingest |
+| [crop-preparator](https://github.com/agentjetson/crop-preparator) | Multi-ROI crops (demo; production wiring TODO) | OpenCV |
+| [scene-router](https://github.com/agentjetson/scene-router) | Hierarchical scene + specialist gating | ONNX (SigLIP 2 / DINOv3) |
+| [temporal-classifier](https://github.com/agentjetson/temporal-classifier) | Temporal refine (MoViNet) | scene-router, ONNX |
+| [alpr-consumer](https://github.com/agentjetson/alpr-consumer) | ALPR specialist | NATS, **rf-detr**, Fast-Plate-OCR |
+| **[voice](https://github.com/agentjetson/voice)** | C++ speech (audio-client + agent) | core ingest + query-service, sherpa-onnx |
 
-### This repo layout
+### Repo layout
 
 | Directory / surface | Role |
 | ------------------- | ---- |
 | `proto/` | Canonical `.proto` files (Buf workspace) |
+| `gen/go/` | buf-generated protos (make generate / Docker) |
 | `domain/` | Scene taxonomy, NATS subject map |
-| `seed/` | ClickHouse DDL + demo seed (`sql/001`–`004`) |
-| `pkg/persistence` | Shared ClickHouse client + typed inserts (no DDL) |
+| `seed/` | ClickHouse DDL + demo seed (`sql/001`–`004`) sole schema owner |
+| `pkg/persistence` | Shared ClickHouse client + typed inserts (no DDL) + batch writers |
 | `pkg/natsjs` | Shared JetStream helpers |
 | `ingest/` | gRPC `:50052` → nats-publisher |
 | `nats-publisher/` | JetStream publish surface `:50051` |
-| `aggregator/` | Correlate objects + results → `cv.alert` |
-| `clickhouse-consumer/` | JetStream pull → ClickHouse |
-| `query-service/` | Read-only Go HTTP `:8080` + MCP |
-| `object-storage/` | Blob sink — MinIO/S3 or filesystem; `:8081` / `:50055` |
+| `aggregator/` | Correlate objects + results → `cv.alert` durables agg-objects / agg-results |
+| `clickhouse-consumer/` | JetStream pull → ClickHouse persistence |
+| `query-service/` | Read-only Go HTTP `:8080` + MCP - SELECTs via persistence on query_* views |
+| `object-storage/` | Blob sink — MinIO/S3 or filesystem; `:8081` / `:50055` uses persistence.InsertObjectMeta |
 | `docker-compose.yml` | Full durable stack (NATS + CH + Go services + MinIO) |
 | `Makefile` | `up` / `schema` / `seed` / `generate` |
 
