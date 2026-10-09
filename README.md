@@ -146,7 +146,7 @@ Shared: `scripts/download_models.sh`, `models/` (gitignored).
 - protobuf + gRPC
 - **ONNX Runtime** (object-classifier, alpr-consumer, rf-detr, scene-router, temporal-classifier)
 - (voice) **sherpa-onnx** + PortAudio — `SHERPA_ONNX_ROOT`
-- Go 1.22+ + Buf CLI
+- Go 1.26+ + Buf CLI
 - Docker Compose
 
 ```bash

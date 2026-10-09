@@ -4,7 +4,7 @@
 #
 # Uses pkg/persistence for ClickHouse; schema is owned by seed/sql.
 
-FROM golang:1.22-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 WORKDIR /src
 
 COPY pkg/persistence /src/pkg/persistence

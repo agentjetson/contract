@@ -1,6 +1,6 @@
 # Build from monorepo root:
 #   docker build -f object-storage/Dockerfile -t object-storage .
-FROM golang:1.22-alpine AS build
+FROM golang:1.26-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git ca-certificates
 

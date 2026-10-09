@@ -39,7 +39,7 @@ This service is **read-only**. It never publishes back into the CV pipeline.
 
 ### Prerequisites
 
-- Go 1.22+
+- Go 1.26+
 - Buf CLI (`curl -sSL https://github.com/bufbuild/buf/releases/latest/download/buf-Linux-x86_64 -o /tmp/buf && chmod +x /tmp/buf && sudo mv /tmp/buf /usr/local/bin/`)
 
 ### Generate & tidy

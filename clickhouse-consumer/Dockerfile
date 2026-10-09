@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM golang:1.22-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 WORKDIR /src
 
 # Install buf for protobuf generation
@@ -14,7 +14,7 @@ COPY clickhouse-consumer /src/clickhouse-consumer
 
 # Generate Go stubs into gen/go (matches go.mod replace)
 RUN buf generate
-RUN printf 'module github.com/agentjetson/core/gen/go\n\ngo 1.22\n\nrequire google.golang.org/protobuf v1.35.1\n' \
+RUN printf 'module github.com/agentjetson/core/gen/go\n\ngo 1.26\n\nrequire google.golang.org/protobuf v1.35.1\n' \
     > /src/gen/go/go.mod
 
 WORKDIR /src/clickhouse-consumer
