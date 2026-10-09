@@ -22,4 +22,10 @@ message Transcript {
   string speaker_id = 9;
   double e2e_latency_ms = 10;
   map<string, string> labels = 11;
+
+  // Optional link to the durable audio blob in object-storage (RustFS).
+  // Populated by audio-client when INGEST_AUDIO / --ingest-audio is enabled.
+  // Content is typically audio/ogg (Opus), not uncompressed WAV.
+  string object_id = 12;
+  string storage_key = 13;
 }
