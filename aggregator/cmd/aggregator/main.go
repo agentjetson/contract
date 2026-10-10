@@ -17,11 +17,23 @@ import (
 	"github.com/agentjetson/core/aggregator/internal/config"
 	"github.com/agentjetson/core/aggregator/internal/correlate"
 	"github.com/agentjetson/core/aggregator/internal/natsjs"
+	"github.com/agentjetson/core/pkg/otel"
 	"github.com/nats-io/nats.go"
 )
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	shutdown, err := otel.Init(ctx, "aggregator")
+	if err != nil {
+		slog.Error("otel", "err", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdown(context.Background()) }()
+
 	cfg := config.Load()
 
 	nc, js, err := natsjs.Connect(cfg.NATSURL, "cv-aggregator")
@@ -66,9 +78,6 @@ func main() {
 		cfg.PruneTimeout,
 		publish,
 	)
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	slog.Info("aggregator ready",
 		"nats", cfg.NATSURL,

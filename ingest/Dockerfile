@@ -4,6 +4,7 @@ WORKDIR /src
 
 # Shared packages + generated stubs (monorepo context).
 COPY gen/go /src/gen/go
+COPY pkg/otel /src/pkg/otel
 COPY ingest /src/ingest
 
 WORKDIR /src/ingest

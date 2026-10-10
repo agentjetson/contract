@@ -4,6 +4,7 @@ WORKDIR /src
 
 # Shared packages + generated stubs (monorepo context).
 COPY pkg/natsjs /src/pkg/natsjs
+COPY pkg/otel /src/pkg/otel
 COPY gen/go /src/gen/go
 COPY nats-publisher /src/nats-publisher
 

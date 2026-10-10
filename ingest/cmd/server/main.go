@@ -15,11 +15,22 @@ import (
 	ingestv1 "github.com/agentjetson/core/gen/go/ingest/v1"
 	"github.com/agentjetson/core/ingest/internal/config"
 	"github.com/agentjetson/core/ingest/internal/service"
+	"github.com/agentjetson/core/pkg/otel"
 	"google.golang.org/grpc"
 )
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	shutdown, err := otel.Init(ctx, "ingest")
+	if err != nil {
+		slog.Error("otel", "err", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdown(context.Background()) }()
 
 	cfg := config.Load()
 
@@ -39,11 +50,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(otel.GRPCServerOption())
 	ingestv1.RegisterIngestServiceServer(grpcServer, svc)
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		<-ctx.Done()
