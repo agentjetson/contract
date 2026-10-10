@@ -13,7 +13,8 @@ WORKDIR /src/object-storage
 RUN go mod download
 
 COPY object-storage/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/object-storage ./cmd/server
+# Keep go.mod/go.sum in sync with source (OTEL, etc.) before compile.
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/object-storage ./cmd/server
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata

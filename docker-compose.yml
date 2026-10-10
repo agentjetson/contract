@@ -14,7 +14,7 @@
 #   Tempo    http://localhost:3200
 #   Loki     http://localhost:3100
 
-name: agentjetson-core
+name: aj-core
 
 x-otel-env: &otel-env
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-otel-collector:4317}
@@ -23,7 +23,6 @@ x-otel-env: &otel-env
 services:
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
-    container_name: aj-clickhouse
     environment:
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: "pass"
@@ -50,7 +49,6 @@ services:
 
   nats:
     image: nats:2.10-alpine
-    container_name: aj-nats
     command: ["-js", "-m", "8222"]
     ports:
       - "4222:4222"
@@ -65,7 +63,6 @@ services:
     build:
       context: .
       dockerfile: nats-publisher/Dockerfile
-    container_name: aj-nats-publisher
     environment:
       <<: *otel-env
       OTEL_SERVICE_NAME: nats-publisher
@@ -84,7 +81,6 @@ services:
     build:
       context: .
       dockerfile: ingest/Dockerfile
-    container_name: aj-ingest
     environment:
       <<: *otel-env
       OTEL_SERVICE_NAME: ingest
@@ -104,7 +100,6 @@ services:
     build:
       context: .
       dockerfile: scene-gate/Dockerfile
-    container_name: aj-scene-gate
     environment:
       <<: *otel-env
       OTEL_SERVICE_NAME: scene-gate
@@ -135,7 +130,6 @@ services:
     build:
       context: .
       dockerfile: aggregator/Dockerfile
-    container_name: aj-aggregator
     environment:
       <<: *otel-env
       OTEL_SERVICE_NAME: aggregator
@@ -158,7 +152,6 @@ services:
     build:
       context: .
       dockerfile: clickhouse-consumer/Dockerfile
-    container_name: aj-clickhouse-consumer
     environment:
       <<: *otel-env
       OTEL_SERVICE_NAME: clickhouse-consumer
@@ -181,7 +174,6 @@ services:
 
   rustfs:
     image: rustfs/rustfs:latest
-    container_name: aj-rustfs
     command: ["/data", "--console-enable", "--console-address", ":9001"]
     environment:
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-minioadmin}
@@ -208,7 +200,6 @@ services:
     build:
       context: .
       dockerfile: object-storage/Dockerfile
-    container_name: aj-object-storage
     environment:
       <<: *otel-env
       OTEL_SERVICE_NAME: object-storage
@@ -244,7 +235,6 @@ services:
     build:
       context: .
       dockerfile: query-service/Dockerfile
-    container_name: aj-query-service
     ports:
       - "8080:8080"
     environment:
@@ -271,7 +261,6 @@ services:
 
   tempo:
     image: grafana/tempo:2.6.1
-    container_name: aj-tempo
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./observability/tempo.yaml:/etc/tempo.yaml:ro
@@ -289,7 +278,6 @@ services:
 
   loki:
     image: grafana/loki:3.1.1
-    container_name: aj-loki
     command: ["-config.file=/etc/loki/config.yaml"]
     volumes:
       - ./observability/loki-config.yaml:/etc/loki/config.yaml:ro
@@ -306,7 +294,6 @@ services:
 
   grafana:
     image: grafana/grafana:11.2.0
-    container_name: aj-grafana
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
@@ -327,7 +314,6 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.104.0
-    container_name: aj-otel-collector
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./otel-config.yaml:/etc/otelcol/config.yaml:ro
