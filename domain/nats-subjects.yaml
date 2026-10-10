@@ -6,6 +6,7 @@ streams:
       - cv.object.>
       - cv.result.>
       - cv.scene.>
+      - cv.source.>
     retention: limits
     max_age: 1h
   CV_ALERTS:
@@ -36,6 +37,21 @@ subjects:
     proto: scene.v1.SceneResult
     publisher: scene-router | temporal-classifier (refined) | scene-gate
     table: cv_scenes
+  cv.source.up:
+    proto: capture.v1.SourceEvent
+    publisher: scene-router | camera-connector (future)
+    consumers: scene-gate
+    table: null
+  cv.source.down:
+    proto: capture.v1.SourceEvent
+    publisher: scene-router | camera-connector (future)
+    consumers: scene-gate
+    table: null
+  cv.source.heartbeat:
+    proto: capture.v1.SourceEvent
+    publisher: scene-router | camera-connector (future)
+    consumers: scene-gate
+    table: null
   cv.alert:
     proto: detection.v1.Alert
     publisher: aggregator

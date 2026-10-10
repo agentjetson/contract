@@ -46,6 +46,34 @@ func WaitStream(js nats.JetStreamContext, name string, timeout time.Duration) er
 	return fmt.Errorf("stream %s not ready within %s", name, timeout)
 }
 
+// EnsureSourceSubjects updates CV_EVENTS (or given stream) to include cv.source.>
+// so dynamic registration messages are captured. Best-effort; logs on failure.
+func EnsureSourceSubjects(js nats.JetStreamContext, stream string) {
+	info, err := js.StreamInfo(stream)
+	if err != nil {
+		slog.Debug("EnsureSourceSubjects: stream missing", "stream", stream, "err", err)
+		return
+	}
+	has := false
+	for _, s := range info.Config.Subjects {
+		if s == "cv.source.>" || s == "cv.source.*" {
+			has = true
+			break
+		}
+	}
+	if has {
+		return
+	}
+	cfg := info.Config
+	cfg.Subjects = append(cfg.Subjects, "cv.source.>")
+	if _, err := js.UpdateStream(&cfg); err != nil {
+		slog.Warn("EnsureSourceSubjects: UpdateStream failed — ensure CV_EVENTS includes cv.source.>",
+			"stream", stream, "err", err)
+		return
+	}
+	slog.Info("stream subjects updated", "stream", stream, "added", "cv.source.>")
+}
+
 func EnsurePull(js nats.JetStreamContext, stream, durable, subject string) (*Sub, error) {
 	_, err := js.AddConsumer(stream, &nats.ConsumerConfig{
 		Durable:       durable,
