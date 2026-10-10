@@ -5,6 +5,9 @@
 #
 # IMPORTANT: Transcript.source (audio-client SOURCE=) and camera source_id must
 # match these patterns. SOURCE=mic will NOT match bodycam-* / front-* profiles.
+#
+# Fixed-role units must also appear in domain/camera_sources.yaml so the gate
+# emits backend=profile SceneResult at startup (not only CLI --source-id).
 
 version: 1
 
@@ -20,8 +23,8 @@ defaults:
 
 profiles:
   # Fixed roadside / front plate camera — pure ALPR path
-  # Edge: set SKIP_VISUAL_SOURCES=front-*,cabin-* (or load this file) so SigLIP does not run.
-  # Gate OnFrame for these is CLI bring-up only until a source-register notify exists.
+  # Edge: SKIP_VISUAL_SOURCES=front-*,cabin-*
+  # Gate: list concrete ids in camera_sources.yaml for startup profile emit
   - match: "front-*"
     description: Fixed front / plate camera
     l1_prior: roadway
