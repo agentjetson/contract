@@ -12,16 +12,16 @@ Same contracts as the rest of the stack: `domain/taxonomy.yaml`, specialists, `I
 
 ## Why Go in core
 
-Scene-gate is policy/routing, not inference. No pixels, no ONNX. Taxonomy + profiles live next to ingest / aggregator; NATS + gRPC are already native here. The C++ repo (`agentjetson/scene-gate`) is a disposable prototype.
+Scene-gate is policy/routing, not inference. No pixels, no ONNX. Taxonomy + profiles live next to ingest / aggregator; NATS + gRPC are already native here.
 
 ```
 edge C++                          core (Go)
 ────────                          ─────────
-camera / audio-client  ──frames──► (optional light notify)
+camera / audio-client  ──frames──► (optional light notify — TBD)
                      ──transcript─► scene-gate
                                        │
                           EmitNow ─────┼──► IngestScene → cv.scene.*
-                          ForwardVisual│    (edge scene-router still runs)
+                          ForwardVisual│    (edge scene-router still runs unless skip_visual)
                           Abstain ─────┘
 ```
 
@@ -51,20 +51,54 @@ profiles:
 
 `audio_intents` map phrases → L2 (case-insensitive, first hit wins).
 
+### Source ID naming (critical)
+
+Profiles match on **`Transcript.source`** / camera `source_id` using exact or trailing-`*` patterns.
+
+| Deployment | Set `SOURCE` / source_id to | Profile match |
+|------------|----------------------------|---------------|
+| Officer body-cam | `bodycam-12`, `bodycam-unit-7` | `bodycam-*` |
+| Front plate cam | `front-cam-01` | `front-*` |
+| Cabin / driver | `cabin-cruiser-3` | `cabin-*` |
+| Dashcam outward | `dashcam-car-9` | `dashcam-*` |
+
+If audio-client uses the default `SOURCE=mic`, **no profile matches** and audio intent never short-circuits. Body-cam deployments must set:
+
+```bash
+SOURCE=bodycam-12   # or bodycam-<unit-id>
+```
+
+Same id should be used by camera-connector for that unit so visual and audio correlate.
+
 ---
 
 ## Behaviour
 
-1. **On `audio.transcript`** (NATS):
-   - Resolve profile for `source`.
-   - Match phrase → L2; if confidence ≥ profile threshold → **EmitNow** with specialists from taxonomy/profile, `backend="audio"`.
-   - Else fall through (or Abstain if `audio_primary && skip_visual`).
+### Production path (live service)
 
-2. **On frame / source notification** (optional side-channel or CLI):
-   - If `skip_visual: true` + `l1_prior` → **EmitNow** with neutral L2 under that prior, `backend="profile"`.
-   - Else → **ForwardVisual** (edge scene-router owns the work).
+The long-running service **only** consumes `audio.transcript` (JetStream `AUDIO_EVENTS`).
 
-3. SceneResult is published via gRPC to ingest (`IngestScene`) or directly to NATS when configured.
+1. Resolve profile for `Transcript.source`.
+2. Match phrase → L2; if confidence ≥ profile threshold → **EmitNow** (`backend="audio"`).
+3. Else **ForwardVisual** (or **Abstain** if `audio_primary && skip_visual`).
+
+### Bring-up / CLI only (`--source-id`)
+
+```bash
+go run ./cmd/scene-gate --source-id front-cam-01
+go run ./cmd/scene-gate --source-id bodycam-12 --simulate-audio "initiating traffic stop"
+```
+
+`--source-id` without `--simulate-audio` runs **OnFrame** (profile prior + `skip_visual`). That path is **bring-up / test only**. There is no production frame side-channel yet, so fixed-role cameras (`front-*`, `cabin-*`) do **not** auto-emit profile SceneResults in the live loop.
+
+Until a camera registration / heartbeat notify exists:
+
+- Rely on **edge scene-router** honouring `SKIP_VISUAL_SOURCES` / profiles for fixed cams (see scene-router), **or**
+- Manually emit once at deploy with the CLI and treat it as a config smoke test.
+
+### Dual SceneResult
+
+If the gate EmitNows from audio **and** scene-router still runs vision on the same source, downstream may see two scenes (`backend=audio` vs `backend=siglip2`). Prefer edge skip for `skip_visual` sources; filter by backend/confidence if both appear.
 
 ---
 
@@ -101,5 +135,6 @@ Env:
 1. Same taxonomy as scene-router / temporal-classifier — no divergent tables.
 2. SceneResult remains the upstream situation contract.
 3. Specialists stay pure consumers.
-4. Fixed cameras stay cheap (skip visual).
+4. Fixed cameras stay cheap (skip visual on edge + profile prior).
 5. Body-cam leans on speech when the officer already announces the situation.
+6. `Transcript.source` / camera `source_id` must match profile patterns.
