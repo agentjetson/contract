@@ -50,6 +50,7 @@ services:
 
   nats:
     image: nats:2.10-alpine
+    container_name: aj-nats
     command: ["-js", "-m", "8222"]
     ports:
       - "4222:4222"
@@ -64,6 +65,7 @@ services:
     build:
       context: .
       dockerfile: nats-publisher/Dockerfile
+    container_name: aj-nats-publisher
     environment:
       <<: *otel-env
       OTEL_SERVICE_NAME: nats-publisher
@@ -82,14 +84,17 @@ services:
     build:
       context: .
       dockerfile: ingest/Dockerfile
+    container_name: aj-ingest
     environment:
       <<: *otel-env
       OTEL_SERVICE_NAME: ingest
       GRPC_ADDR: 0.0.0.0:50052
       PUBLISHER_ADDR: nats-publisher:50051
     depends_on:
-      - nats-publisher
-      - otel-collector
+      nats-publisher:
+        condition: service_started
+      otel-collector:
+        condition: service_started
     ports:
       - "50052:50052"
     restart: unless-stopped
@@ -99,6 +104,7 @@ services:
     build:
       context: .
       dockerfile: scene-gate/Dockerfile
+    container_name: aj-scene-gate
     environment:
       <<: *otel-env
       OTEL_SERVICE_NAME: scene-gate
@@ -129,6 +135,7 @@ services:
     build:
       context: .
       dockerfile: aggregator/Dockerfile
+    container_name: aj-aggregator
     environment:
       <<: *otel-env
       OTEL_SERVICE_NAME: aggregator
@@ -201,6 +208,7 @@ services:
     build:
       context: .
       dockerfile: object-storage/Dockerfile
+    container_name: aj-object-storage
     environment:
       <<: *otel-env
       OTEL_SERVICE_NAME: object-storage
@@ -227,7 +235,7 @@ services:
       clickhouse:
         condition: service_healthy
       rustfs:
-        condition: service_started
+        condition: service_healthy
       otel-collector:
         condition: service_started
     restart: unless-stopped
@@ -236,7 +244,7 @@ services:
     build:
       context: .
       dockerfile: query-service/Dockerfile
-    container_name: voice-query-service
+    container_name: aj-query-service
     ports:
       - "8080:8080"
     environment:
@@ -263,6 +271,7 @@ services:
 
   tempo:
     image: grafana/tempo:2.6.1
+    container_name: aj-tempo
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./observability/tempo.yaml:/etc/tempo.yaml:ro
@@ -270,20 +279,34 @@ services:
     ports:
       - "3200:3200"   # Tempo query API (Grafana)
       # OTLP ports stay internal; only the collector talks to them.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3200/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
 
   loki:
     image: grafana/loki:3.1.1
+    container_name: aj-loki
     command: ["-config.file=/etc/loki/config.yaml"]
     volumes:
       - ./observability/loki-config.yaml:/etc/loki/config.yaml:ro
       - loki-data:/loki
     ports:
       - "3100:3100"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
 
   grafana:
     image: grafana/grafana:11.2.0
+    container_name: aj-grafana
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
@@ -296,12 +319,15 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - tempo
-      - loki
+      tempo:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
     restart: unless-stopped
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.104.0
+    container_name: aj-otel-collector
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./otel-config.yaml:/etc/otelcol/config.yaml:ro
@@ -309,8 +335,10 @@ services:
       - "4317:4317"
       - "4318:4318"
     depends_on:
-      - tempo
-      - loki
+      tempo:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

@@ -39,13 +39,13 @@ schema_config:
 ruler:
   alertmanager_url: http://localhost:9093
 
-# Native OTLP (HTTP) so the collector can push logs without a special exporter.
-otlp_config:
-  # Map OTEL resource attributes → Loki labels for filtering.
-  default_resource_attributes_as_index_labels:
-    - service.name
-    - service.namespace
-    - deployment.environment
+# OTLP defaults live under distributor (not top-level).
+distributor:
+  otlp_config:
+    default_resource_attributes_as_index_labels:
+      - service.name
+      - service.namespace
+      - deployment.environment
 
 limits_config:
   allow_structured_metadata: true
