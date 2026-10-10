@@ -59,7 +59,7 @@ Do not invent a second metadata schema.
 | Package | Purpose | Used by |
 |---------|---------|---------|
 | `pkg/persistence` | ClickHouse native client + typed insert helpers. **No DDL.** | clickhouse-consumer, object-storage (`InsertObjectMeta`), voice-query-service (`Conn()` + SELECTs) |
-| `pkg/natsjs` | JetStream connect / stream wait / pull consumers | nats-publisher, clickhouse-consumer, aggregator |
+| `pkg/natsjs` | JetStream connect / stream wait / pull consumers | ingest, clickhouse-consumer, aggregator |
 
 Any Go services should depend on these modules rather than re-implementing logic.
 

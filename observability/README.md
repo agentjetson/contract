@@ -26,8 +26,7 @@ Datasources are auto-provisioned from `grafana/provisioning/datasources/`.
 ## End-to-end `trace_id` flow
 
 ```
-edge → ingest (gRPC span)
-         → nats-publisher (gRPC child + nats.publish PRODUCER)
+edge → ingest (gRPC span + gRPC child + nats.publish PRODUCER)
               ─ NATS header: traceparent ─→ JetStream
               ↓
    aggregator / clickhouse-consumer / scene-gate
@@ -35,7 +34,7 @@ edge → ingest (gRPC span)
          aggregator emit.alert continues parent → cv.alert (+ inject)
 ```
 
-1. **gRPC** — `otel.GRPCServerOption` / `GRPCDialOptions` on ingest ↔ nats-publisher and scene-gate → ingest.
+1. **gRPC** — `otel.GRPCServerOption` / `GRPCDialOptions` on ingest → nats-publisher and scene-gate → ingest.
 2. **NATS headers** — `pkg/otel.InjectMsg` / `ExtractMsg` (W3C `traceparent` / `tracestate`).
 3. **Logs** — `slog.InfoContext` + SetupLogging adds `trace_id` / `span_id` JSON fields; Grafana derived field jumps to Tempo.
 
@@ -43,7 +42,7 @@ edge → ingest (gRPC span)
 
 **Loki**
 ```logql
-{service_name=~"ingest|nats-publisher|aggregator|clickhouse-consumer"} | json | trace_id != ""
+{service_name=~"ingest|aggregator|clickhouse-consumer"} | json | trace_id != ""
 ```
 
 **Tempo (TraceQL)**

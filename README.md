@@ -15,7 +15,6 @@ This document is the single source of truth for how the AgentJetson edge CV + au
 | NATS subject map | `domain/nats-subjects.yaml` |
 | Scene taxonomy | `domain/taxonomy.yaml` |
 | **ingest** (gRPC → NATS) | `ingest/` |
-| **nats-publisher** | `nats-publisher/` |
 | **aggregator** | `aggregator/` |
 | **clickhouse-consumer** | `clickhouse-consumer/` |
 | **voice-query-service** (HTTP + MCP) | `voice-query-service/` |
@@ -33,7 +32,7 @@ See [`CONSUMING.md`](CONSUMING.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`seed
 edge C++ (camera / scene / detect / specialists)
         │  IngestObject / IngestScene / IngestTranscript
         ▼
-core (Go):  ingest → nats-publisher → JetStream
+core (Go):     ingest → JetStream
                       │
                       ├─► specialists (alpr, …) → cv.result.*
                       ├─► aggregator → cv.alert
@@ -74,7 +73,7 @@ core (Go):  ingest → nats-publisher → JetStream
 
 | Repository | Role | Depends on |
 | ---------- | ---- | ---------- |
-| **[core](https://github.com/agentjetson/core)** (this repo) | public | protos, DDL, domain, **ingest, nats-publisher, aggregator, clickhouse-consumer, voice-query-service, object-storage** | Docker Compose |
+| **[core](https://github.com/agentjetson/core)** (this repo) | public | protos, DDL, domain, **ingest, aggregator, clickhouse-consumer, voice-query-service, object-storage** | Docker Compose |
 | [video](https://github.com/agentjetson/video) | C++ demo Alert `consumer`, `video_server`, `video_viewer` | core ClickHouse |
 | [rf-detr](https://github.com/agentjetson/rf-detr) | Shared C++ RF-DETR ONNX library | OpenCV, ONNX Runtime |
 | [camera-connector](https://github.com/agentjetson/camera-connector) | Thin multi-source capture (V4L2 / RTSP / file) | OpenCV |
@@ -96,8 +95,7 @@ core (Go):  ingest → nats-publisher → JetStream
 | `seed/` | ClickHouse DDL + demo seed (`sql/001`–`004`) sole schema owner |
 | `pkg/persistence` | Shared ClickHouse client + typed inserts (no DDL) + batch writers |
 | `pkg/natsjs` | Shared JetStream helpers |
-| `ingest/` | gRPC `:50052` → nats-publisher |
-| `nats-publisher/` | JetStream publish surface `:50051` |
+| `ingest/` | gRPC `:50052` → JetStream publish surface |
 | `aggregator/` | Correlate objects + results → `cv.alert` durables agg-objects / agg-results |
 | `clickhouse-consumer/` | JetStream pull → ClickHouse persistence |
 | `voice-query-service/` | Read-only Go HTTP `:8080` + MCP - SELECTs via persistence on query_* views |
@@ -160,8 +158,8 @@ export LD_LIBRARY_PATH=$SHERPA_ONNX_ROOT/lib:$LD_LIBRARY_PATH
 git clone https://github.com/agentjetson/core.git
 cd core
 
-make up          # full compose: nats, clickhouse, ingest, nats-publisher,
-                 # aggregator, clickhouse-consumer, minio, object-storage, voice-query-service
+make up          # full compose: nats, clickhouse, ingest, aggregator, 
+                 # clickhouse-consumer, minio, object-storage, voice-query-service
 make schema      # idempotent DDL (if not applied by init scripts)
 make seed        # demo rows (seed.cam-* / seed.mic-*)
 ```
@@ -172,7 +170,7 @@ Verify:
 curl -s http://localhost:8222/healthz          # NATS monitor
 curl -s http://localhost:8123/ping             # ClickHouse HTTP
 curl -s http://localhost:8080/health | jq      # voice-query-service
-# ingest gRPC :50052, nats-publisher :50051, object-storage :8081
+# ingest gRPC :50052, object-storage :8081
 ```
 
 Or run individual Go services:

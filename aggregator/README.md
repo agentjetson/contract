@@ -39,7 +39,7 @@ Override with `WATCHLIST=person:0.6,car:0.5,ABC123:0.7`.
 | `agg-objects` | `CV_EVENTS` | `cv.object.>` |
 | `agg-results` | `CV_EVENTS` | `cv.result.>` |
 
-Streams are created by **nats-publisher** (`EnsureAllStreams` from
+Streams are created by **ingest** (`EnsureAllStreams` from
 `domain/nats-subjects.yaml`). Aggregator waits for `CV_EVENTS` (required)
 and warns if `CV_ALERTS` is late.
 

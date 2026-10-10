@@ -145,10 +145,6 @@ Audio path (body-cam / POV):
        │                     ForwardVisual → edge scene-router still runs
 ```
 
-On single-Orin deployments the former `ingest` → `nats-publisher` gRPC hop is
-removed: one binary accepts ingest RPCs and owns the NATS connection. The
-standalone `nats-publisher/` tree remains for multi-node / independent scaling.
-
 ## Components
 
 ### Edge (C++)
@@ -161,7 +157,6 @@ standalone `nats-publisher/` tree remains for multi-node / independent scaling.
 
 ### Contract (this repo — Go)
 - **ingest** — gRPC `:50052`; owns NATS; registers both `IngestService` and `NatsPublisherService`.
-- **nats-publisher** — optional standalone JetStream publish surface (not started by default compose).
 - **scene-gate** — per-camera policy: fixed-role profile short-circuit + audio intent → `SceneResult`; otherwise forward to visual path. Config: `domain/camera_profiles.yaml` + `domain/taxonomy.yaml`.
 - **aggregator** — correlates objects + capability results; emits `cv.alert`.
 - **clickhouse-consumer** — durable JetStream → ClickHouse writers.

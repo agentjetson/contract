@@ -43,7 +43,7 @@ func main() {
 		os.Exit(1)
 	}
 	if err := natsjs.WaitStream(js, cfg.StreamAlerts, 30*time.Second); err != nil {
-		slog.Warn("stream alerts not ready yet — publishes may fail until nats-publisher starts",
+		slog.Warn("stream alerts not ready yet — publishes may fail until ingest starts",
 			"stream", cfg.StreamAlerts, "err", err)
 	}
 

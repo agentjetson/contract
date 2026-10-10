@@ -8,8 +8,6 @@ the NATS connection, and publishes directly. It also registers
 `nats.v1.NatsPublisherService` on the same gRPC server so specialists that
 dial the publisher surface keep working.
 
-The standalone `nats-publisher/` tree remains for independent scaling later.
-
 | RPC              | Publishes to (default subject) |
 |------------------|--------------------------------|
 | IngestAlert      | `cv.alert`                     |
