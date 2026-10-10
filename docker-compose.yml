@@ -4,6 +4,12 @@
 #   make schema      # re-apply DDL (idempotent)
 #   make seed        # demo rows
 #
+# Orin / single-box profile notes:
+#   - ingest owns NATS (no separate nats-publisher hop)
+#   - NATS: modest memory + file store on local volume (bind to SSD in production)
+#   - ClickHouse: lighter resource profile
+#   - Go services use host network when ORIN=1 (see docker-compose.orin.yml)
+#
 # Env expected by consumers:
 #   CLICKHOUSE_HOST / PORT / USER / PASSWORD / DB
 #   NATS_URL
@@ -27,6 +33,8 @@ services:
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: "pass"
       CLICKHOUSE_DB: default
+      # Lighter footprint for Orin / edge boxes
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     ports:
       - "8123:8123"
       - "9000:9000"
@@ -36,6 +44,7 @@ services:
       - ./seed/sql/002_tables.sql:/docker-entrypoint-initdb.d/002_tables.sql:ro
       - ./seed/sql/003_views.sql:/docker-entrypoint-initdb.d/003_views.sql:ro
       - ./seed/sql/004_seed.sql:/docker-entrypoint-initdb.d/004_seed.sql:ro
+      - ./observability/clickhouse-config.xml:/etc/clickhouse-server/config.d/orin.xml:ro
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
       interval: 3s
@@ -46,37 +55,44 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
 
   nats:
     image: nats:2.10-alpine
-    command: ["-js", "-m", "8222"]
+    # JetStream file store on volume (bind-mount to local SSD on Orin in production).
+    # Modest max_mem / max_file keep the process small on edge hardware.
+    command:
+      - "-js"
+      - "-m"
+      - "8222"
+      - "-sd"
+      - "/data"
+      - "--max_payload"
+      - "8MB"
     ports:
       - "4222:4222"
       - "8222:8222"
+    volumes:
+      - nats-data:/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
       interval: 5s
       timeout: 3s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
 
-  nats-publisher:
-    build:
-      context: .
-      dockerfile: nats-publisher/Dockerfile
-    environment:
-      <<: *otel-env
-      OTEL_SERVICE_NAME: nats-publisher
-      NATS_URL: ${NATS_URL:-nats://nats:4222}
-      GRPC_ADDR: 0.0.0.0:50051
-    ports:
-      - "50051:50051"
-    depends_on:
-      nats:
-        condition: service_healthy
-      otel-collector:
-        condition: service_started
-    restart: unless-stopped
-
+  # Combined ingest + JetStream publisher (single binary, no gRPC hop).
+  # Also exposes NatsPublisherService on the same port for specialists.
   ingest:
     build:
       context: .
@@ -85,14 +101,15 @@ services:
       <<: *otel-env
       OTEL_SERVICE_NAME: ingest
       GRPC_ADDR: 0.0.0.0:50052
-      PUBLISHER_ADDR: nats-publisher:50051
-    depends_on:
-      nats-publisher:
-        condition: service_started
-      otel-collector:
-        condition: service_started
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      NATS_CLIENT_NAME: ingest
     ports:
       - "50052:50052"
+    depends_on:
+      nats:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
     restart: unless-stopped
 
   # Per-camera decision gate: profile + audio intent + cv.source.* → SceneResult
@@ -142,7 +159,7 @@ services:
     depends_on:
       nats:
         condition: service_healthy
-      nats-publisher:
+      ingest:
         condition: service_started
       otel-collector:
         condition: service_started
@@ -329,6 +346,7 @@ services:
 
 volumes:
   clickhouse-data:
+  nats-data:
   rustfs_data:
   tempo-data:
   loki-data:
