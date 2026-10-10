@@ -12,8 +12,7 @@ CP[crop-preparator<br/>OpenCV multi-ROI crops]
 end
 
 subgraph Contract["agentjetson/core (this repo)"]
-ING[ingest<br/>gRPC :50052 → NATS publisher]
-NP[nats-publisher<br/>JetStream :50051]
+ING[ingest<br/>gRPC :50052 · owns NATS<br/>IngestService + NatsPublisherService]
 SG[scene-gate<br/>profile + audio intent → SceneResult]
 AGG[aggregator<br/>correlate + watchlist]
 CHC[clickhouse-consumer<br/>JetStream → CH]
@@ -53,11 +52,10 @@ OC -->|ObjectEnvelope<br/>cv.object.*| ING
 OC -.->|optional| CP
 CP -->|enriched crops / ObjectEnvelope| ING
 
-ING --> NP
-NP --> NATS
+ING --> NATS
 NATS -->|cv.object.*| ALPR
 NATS -->|cv.object.* + cv.result.* + cv.scene.*| AGG
-ALPR -->|CapabilityResult<br/>cv.result.alpr| NP
+ALPR -->|CapabilityResult<br/>cv.result.alpr| ING
 AGG -->|Alert<br/>cv.alert| NATS
 NATS --> CHC
 NATS --> CONS
@@ -124,12 +122,12 @@ Cameras → object-classifier (or scene-router → object-classifier)
             ▼
         IngestObject / IngestScene (gRPC :50052)
             ▼
-        nats-publisher → JetStream
+        ingest (owns NATS) → JetStream
             │
             ├──────────────────► alpr-consumer
             │                      │ plate OCR on crop
             │                      ▼
-            │                   cv.result.alpr
+            │                   cv.result.alpr (via IngestResult or NatsPublisherService)
             │                      │
             └──────────────────► aggregator
                                    │ correlate by (frame_id, track_id)
@@ -147,6 +145,10 @@ Audio path (body-cam / POV):
        │                     ForwardVisual → edge scene-router still runs
 ```
 
+On single-Orin deployments the former `ingest` → `nats-publisher` gRPC hop is
+removed: one binary accepts ingest RPCs and owns the NATS connection. The
+standalone `nats-publisher/` tree remains for multi-node / independent scaling.
+
 ## Components
 
 ### Edge (C++)
@@ -158,8 +160,8 @@ Audio path (body-cam / POV):
 - **alpr-consumer** — pure specialist: `ObjectEnvelope` in → `CapabilityResult` out.
 
 ### Contract (this repo — Go)
-- **ingest** — gRPC `:50052`; fans out to nats-publisher.
-- **nats-publisher** — JetStream publish surface `:50051`.
+- **ingest** — gRPC `:50052`; owns NATS; registers both `IngestService` and `NatsPublisherService`.
+- **nats-publisher** — optional standalone JetStream publish surface (not started by default compose).
 - **scene-gate** — per-camera policy: fixed-role profile short-circuit + audio intent → `SceneResult`; otherwise forward to visual path. Config: `domain/camera_profiles.yaml` + `domain/taxonomy.yaml`.
 - **aggregator** — correlates objects + capability results; emits `cv.alert`.
 - **clickhouse-consumer** — durable JetStream → ClickHouse writers.
@@ -178,7 +180,7 @@ Audio path (body-cam / POV):
 
 1. Copy `alpr-consumer` pattern → new binary.
 2. Filter / capability string / inference.
-3. Publish to `cv.result.<capability>`.
+3. Publish to `cv.result.<capability>` (via IngestResult or NatsPublisherService on `:50052`).
 4. Extend aggregator to merge attributes into Alert (or keep as side-channel).
 5. Ensure clickhouse-consumer maps the capability into `cv_results`.
 
