@@ -16,15 +16,19 @@ type Config struct {
 	AudioSubject       string
 	StreamAudio        string
 	StreamEvents       string
+	SourceSubject      string // filter e.g. cv.source.>
 	FetchBatch         int
 	FetchTimeout       time.Duration
-	PublishViaIngest   bool // true = gRPC IngestScene; false = direct NATS (future)
-	EmitProfiles       bool // emit backend=profile SceneResult for registered sources
-	ProfileRefresh     time.Duration // 0 = startup only; >0 re-emit on this interval
+	PublishViaIngest   bool
+	EmitProfiles       bool // static YAML bootstrap emit
+	ProfileRefresh     time.Duration
+	DynamicSources     bool          // consume cv.source.*
+	SourceDebounce     time.Duration // min interval between profile emits per source
 }
 
 func Load() Config {
 	refreshMin := envInt("PROFILE_REFRESH_MIN", 0)
+	debounceSec := envInt("SOURCE_DEBOUNCE_SEC", 60)
 	return Config{
 		NATSURL:            env("NATS_URL", "nats://localhost:4222"),
 		IngestAddr:         env("INGEST_ADDR", "localhost:50052"),
@@ -34,11 +38,14 @@ func Load() Config {
 		AudioSubject:       env("AUDIO_SUBJECT", "audio.transcript"),
 		StreamAudio:        env("STREAM_AUDIO", "AUDIO_EVENTS"),
 		StreamEvents:       env("STREAM_EVENTS", "CV_EVENTS"),
+		SourceSubject:      env("SOURCE_SUBJECT", "cv.source.>"),
 		FetchBatch:         envInt("FETCH_BATCH", 8),
 		FetchTimeout:       time.Duration(envInt("FETCH_TIMEOUT_MS", 200)) * time.Millisecond,
 		PublishViaIngest:   envBool("PUBLISH_VIA_INGEST", true),
 		EmitProfiles:       envBool("EMIT_PROFILES", true),
 		ProfileRefresh:     time.Duration(refreshMin) * time.Minute,
+		DynamicSources:     envBool("DYNAMIC_SOURCES", true),
+		SourceDebounce:     time.Duration(debounceSec) * time.Second,
 	}
 }
 

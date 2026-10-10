@@ -77,7 +77,7 @@ services:
       - "50052:50052"
     restart: unless-stopped
 
-  # Per-camera decision gate: profile short-circuit + audio intent → SceneResult
+  # Per-camera decision gate: profile + audio intent + cv.source.* → SceneResult
   scene-gate:
     build:
       context: .
@@ -89,10 +89,13 @@ services:
       CAMERA_PROFILES_PATH: /config/camera_profiles.yaml
       CAMERA_SOURCES_PATH: /config/camera_sources.yaml
       STREAM_AUDIO: AUDIO_EVENTS
+      STREAM_EVENTS: CV_EVENTS
       AUDIO_SUBJECT: audio.transcript
+      SOURCE_SUBJECT: cv.source.>
+      DYNAMIC_SOURCES: "true"
+      SOURCE_DEBOUNCE_SEC: "60"
       PUBLISH_VIA_INGEST: "true"
       EMIT_PROFILES: "true"
-      # PROFILE_REFRESH_MIN: "15"   # optional re-emit; 0 = startup only
     depends_on:
       nats:
         condition: service_healthy
@@ -140,9 +143,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # S3-compatible object store (RustFS — Apache-2.0 MinIO alternative).
-  # Producers (camera-connector --ingest, audio-client) write via object-storage.
-  # Credentials accept both RUSTFS_* (canonical) and MINIO_* (compat aliases).
   rustfs:
     image: rustfs/rustfs:latest
     container_name: aj-rustfs
@@ -150,15 +150,14 @@ services:
     environment:
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-minioadmin}
       RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-minioadmin}
-      # MinIO-compat aliases still accepted by RustFS
       MINIO_ROOT_USER: ${RUSTFS_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${RUSTFS_SECRET_KEY:-minioadmin}
       RUSTFS_ADDRESS: ":9000"
       RUSTFS_CONSOLE_ADDRESS: ":9001"
       RUSTFS_CONSOLE_ENABLE: "true"
     ports:
-      - "9010:9000"   # S3 API (host 9010 to avoid clash with ClickHouse :9000)
-      - "9001:9001"   # Console
+      - "9010:9000"
+      - "9001:9001"
     volumes:
       - rustfs_data:/data
     healthcheck:
