@@ -21,7 +21,7 @@ _ = ch.InsertDetections(ctx, []persistence.DetectionRow{...})
 _ = ch.InsertTranscripts(ctx, []persistence.TranscriptRow{...})
 _ = ch.InsertObjectMeta(ctx, persistence.ObjectMetaRow{...})
 
-// Advanced / query-service:
+// Advanced / voice-query-service:
 conn := ch.Conn() // driver.Conn for SELECT against query_* views
 ```
 
@@ -31,4 +31,4 @@ conn := ch.Conn() // driver.Conn for SELECT against query_* views
 |---------|------|
 | clickhouse-consumer | InsertObjects / Results / Scenes / Detections / Transcripts |
 | object-storage | InsertObjectMeta |
-| query-service | Conn() + SELECTs (no ApplySchema) |
+| voice-query-service | Conn() + SELECTs (no ApplySchema) |

@@ -3,7 +3,7 @@
 Canonical durable store for AgentJetson.
 
 This folder is the **only** place tables are defined. Core's clickhouse_consumer
-and query-service's `ApplySchema` were competing implementations; they now
+and voice-query-service's `ApplySchema` were competing implementations; they now
 consume this schema.
 
 ## Layout
@@ -12,7 +12,7 @@ consume this schema.
 | ----------------------- | ----------------------------------------- |
 | `sql/001_database.sql`  | Database notes                            |
 | `sql/002_tables.sql`    | Canonical MergeTree tables (proto-aligned)|
-| `sql/003_views.sql`     | `query_*` views for the Go query-service  |
+| `sql/003_views.sql`     | `query_*` views for the Go voice-query-service  |
 | `sql/004_seed.sql`      | Demo rows (`source LIKE 'seed.%'`)        |
 | `WRITE_SPEC.md`         | How the consumer maps NATS → rows         |
 
@@ -46,4 +46,4 @@ ClickHouse adapter writes rows.
 ## Re-seed
 
 `make seed` deletes `source LIKE 'seed.%'` then inserts the Mercedes / plate
-fixture used by query-service DEMO_MODE.
+fixture used by voice-query-service DEMO_MODE.

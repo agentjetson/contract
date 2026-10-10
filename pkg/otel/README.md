@@ -2,9 +2,12 @@
 
 Shared OpenTelemetry bootstrap for AgentJetson Go microservices.
 
-Traces export over OTLP/gRPC to `otel-collector`, which fans out to **Tempo**.
-Structured logs (stdout JSON) carry `trace_id` / `span_id` when the log call
-uses a context with an active span — Grafana Loki derives a link to Tempo.
+**Traces** export over OTLP/gRPC to `otel-collector` → **Tempo**.  
+**Logs** export over OTLP/gRPC to `otel-collector` → **Loki** (native OTLP),
+and are still written as JSON to stdout for `docker logs`.
+
+When a log call uses a context with an active span, OTLP records are correlated
+to that trace; stdout JSON also carries `trace_id` / `span_id`.
 
 ## Usage
 
@@ -16,18 +19,8 @@ if err != nil {
     os.Exit(1)
 }
 defer func() { _ = shutdown(context.Background()) }()
-// SetupLogging is called inside Init — slog.InfoContext will include trace_id.
 
-grpcServer := grpc.NewServer(otel.GRPCServerOption())
-
-conn, err := grpc.NewClient(addr, append(
-    otel.GRPCDialOptions(),
-    grpc.WithTransportCredentials(insecure.NewCredentials()),
-)...)
-
-http.ListenAndServe(addr, otel.HTTPHandler("http.server", mux))
-
-// Prefer context-aware logging so Loki can join on trace_id:
+// Prefer context-aware logging so Loki/Tempo can join on the same trace:
 sctx, span := otel.StartSpan(ctx, "ingest", "IngestAlert")
 defer span.End()
 slog.InfoContext(sctx, "ingested alert", "frame", id)

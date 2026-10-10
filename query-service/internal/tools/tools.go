@@ -13,9 +13,9 @@ import (
 
 // Server holds dependencies for tool handlers.
 type Server struct {
-	cfg   *config.Config
-	ch    *clickhouse.Client
-	demo  *clickhouse.DemoStore
+	cfg  *config.Config
+	ch   *clickhouse.Client
+	demo *clickhouse.DemoStore
 }
 
 func New(cfg *config.Config, ch *clickhouse.Client) *Server {

@@ -18,7 +18,7 @@ This document is the single source of truth for how the AgentJetson edge CV + au
 | **nats-publisher** | `nats-publisher/` |
 | **aggregator** | `aggregator/` |
 | **clickhouse-consumer** | `clickhouse-consumer/` |
-| **query-service** (HTTP + MCP) | `query-service/` |
+| **voice-query-service** (HTTP + MCP) | `voice-query-service/` |
 | **object-storage** (blob sink) | `object-storage/` |
 
 Other repos consume; they do not keep a private copy of protos or DDL.
@@ -40,7 +40,7 @@ core (Go):  ingest → nats-publisher → JetStream
                       └─► clickhouse-consumer → ClickHouse
                                                   │
                                                   ▼
-                                          query-service (read-only)
+                                          voice-query-service (read-only)
 ```
 
 ### Stable contracts
@@ -53,20 +53,20 @@ core (Go):  ingest → nats-publisher → JetStream
 | `CapabilityResult` | specialists → aggregator                | `cv.result.<capability>`                | specialists                         |
 | `Alert`            | aggregator → consumers                  | `cv.alert`                              | **core/aggregator**             |
 | `Transcript`       | audio-client → ingest                   | `IngestTranscript` / `audio.transcript` | **voice/audio-client**              |
-| **Query APIs**     | query-service → ClickHouse / NATS       | HTTP `/v1/query/*` + MCP tools          | **core/query-service**          |
+| **Query APIs**     | voice-query-service → ClickHouse / NATS       | HTTP `/v1/query/*` + MCP tools          | **core/voice-query-service**          |
 | **Object storage** | edge producers → object-storage         | `PutObject` / HTTP `/v1/objects`        | **core/object-storage**         |
 
 **ObjectEnvelope remains the cornerstone for detection.** Everything upstream of it can evolve. Everything downstream must not care how the envelope was produced.
 
 **SceneResult is the upstream situation contract.** Answers “what kind of situation is this?” and carries Level-1 / Level-2 labels plus a suggested specialist list.
 
-**query-service is a pure consumer.** It never publishes back into the CV pipeline.
+**voice-query-service is a pure consumer.** It never publishes back into the CV pipeline.
 
 **object-storage is a pure sink.** Stores blobs + correlation metadata; never publishes onto JetStream.
 
 **audio-client is the pure STT recorder.** No LLM, no TTS.
 
-**agent is the interactive front-end.** Calls query-service over HTTP for scene-aware answers.
+**agent is the interactive front-end.** Calls voice-query-service over HTTP for scene-aware answers.
 
 ---
 
@@ -74,7 +74,7 @@ core (Go):  ingest → nats-publisher → JetStream
 
 | Repository | Role | Depends on |
 | ---------- | ---- | ---------- |
-| **[core](https://github.com/agentjetson/core)** (this repo) | public | protos, DDL, domain, **ingest, nats-publisher, aggregator, clickhouse-consumer, query-service, object-storage** | Docker Compose |
+| **[core](https://github.com/agentjetson/core)** (this repo) | public | protos, DDL, domain, **ingest, nats-publisher, aggregator, clickhouse-consumer, voice-query-service, object-storage** | Docker Compose |
 | [video](https://github.com/agentjetson/video) | C++ demo Alert `consumer`, `video_server`, `video_viewer` | core ClickHouse |
 | [rf-detr](https://github.com/agentjetson/rf-detr) | Shared C++ RF-DETR ONNX library | OpenCV, ONNX Runtime |
 | [camera-connector](https://github.com/agentjetson/camera-connector) | Thin multi-source capture (V4L2 / RTSP / file) | OpenCV |
@@ -84,7 +84,7 @@ core (Go):  ingest → nats-publisher → JetStream
 | [scene-router](https://github.com/agentjetson/scene-router) | Hierarchical scene + specialist gating | ONNX (SigLIP 2 / DINOv3) |
 | [temporal-classifier](https://github.com/agentjetson/temporal-classifier) | Temporal refine (MoViNet) | scene-router, ONNX |
 | [alpr-consumer](https://github.com/agentjetson/alpr-consumer) | ALPR specialist | NATS, **rf-detr**, Fast-Plate-OCR |
-| **[voice](https://github.com/agentjetson/voice)** | C++ speech (audio-client + agent) | core ingest + query-service, sherpa-onnx |
+| **[voice](https://github.com/agentjetson/voice)** | C++ speech (audio-client + agent) | core ingest + voice-query-service, sherpa-onnx |
 
 ### Repo layout
 
@@ -100,7 +100,7 @@ core (Go):  ingest → nats-publisher → JetStream
 | `nats-publisher/` | JetStream publish surface `:50051` |
 | `aggregator/` | Correlate objects + results → `cv.alert` durables agg-objects / agg-results |
 | `clickhouse-consumer/` | JetStream pull → ClickHouse persistence |
-| `query-service/` | Read-only Go HTTP `:8080` + MCP - SELECTs via persistence on query_* views |
+| `voice-query-service/` | Read-only Go HTTP `:8080` + MCP - SELECTs via persistence on query_* views |
 | `object-storage/` | Blob sink — MinIO/S3 or filesystem; `:8081` / `:50055` uses persistence.InsertObjectMeta |
 | `docker-compose.yml` | Full durable stack (NATS + CH + Go services + MinIO) |
 | `Makefile` | `up` / `schema` / `seed` / `generate` |
@@ -110,7 +110,7 @@ core (Go):  ingest → nats-publisher → JetStream
 | Directory | Role |
 | --------- | ---- |
 | `audio-client/` | Edge STT live client → gRPC `:50054` + optional ingest |
-| `agent/` | Interactive agent (KWS/VAD → STT → LLM → TTS); calls **core/query-service** |
+| `agent/` | Interactive agent (KWS/VAD → STT → LLM → TTS); calls **core/voice-query-service** |
 
 Shared: `scripts/download_models.sh`, `models/` (gitignored).
 
@@ -161,7 +161,7 @@ git clone https://github.com/agentjetson/core.git
 cd core
 
 make up          # full compose: nats, clickhouse, ingest, nats-publisher,
-                 # aggregator, clickhouse-consumer, minio, object-storage, query-service
+                 # aggregator, clickhouse-consumer, minio, object-storage, voice-query-service
 make schema      # idempotent DDL (if not applied by init scripts)
 make seed        # demo rows (seed.cam-* / seed.mic-*)
 ```
@@ -171,15 +171,15 @@ Verify:
 ```bash
 curl -s http://localhost:8222/healthz          # NATS monitor
 curl -s http://localhost:8123/ping             # ClickHouse HTTP
-curl -s http://localhost:8080/health | jq      # query-service
+curl -s http://localhost:8080/health | jq      # voice-query-service
 # ingest gRPC :50052, nats-publisher :50051, object-storage :8081
 ```
 
 Or run individual Go services:
 
 ```bash
-# query-service (DEMO_MODE needs no ClickHouse)
-cd query-service && make generate && make tidy
+# voice-query-service (DEMO_MODE needs no ClickHouse)
+cd voice-query-service && make generate && make tidy
 export DEMO_MODE=true
 go run ./cmd/server          # :8080
 
@@ -275,7 +275,7 @@ make up && make schema && make seed
 | `cv.alert` | `detection.v1.Alert` | `cv_detections` | **core/clickhouse-consumer** |
 | `audio.transcript` | `audio.v1.Transcript` | `audio_transcripts` | **core/clickhouse-consumer** |
 
-`query_*` views (`seed/sql/003_views.sql`) alias columns for query-service. Until full writers land, use `make seed` or `DEMO_MODE=true`.
+`query_*` views (`seed/sql/003_views.sql`) alias columns for voice-query-service. Until full writers land, use `make seed` or `DEMO_MODE=true`.
 
 ---
 
@@ -285,10 +285,10 @@ make up && make schema && make seed
 2. **ObjectEnvelope is the stable detection contract.**
 3. **SceneResult is the stable situation contract.** Does not replace ObjectEnvelope.
 4. **Specialists are pure consumers** of ObjectEnvelopes.
-5. **query-service is a pure consumer.** Never publishes into the CV pipeline.
+5. **voice-query-service is a pure consumer.** Never publishes into the CV pipeline.
 6. **object-storage is a pure sink.** Never publishes onto JetStream.
 7. **audio-client is the pure recorder.** No LLM, no TTS.
-8. **agent is the interactive front-end.** Calls query-service for answers.
+8. **agent is the interactive front-end.** Calls voice-query-service for answers.
 9. **One detection engine** — agentjetson/rf-detr; swap weights, not frameworks.
 10. **Scene ≠ detection.** Keep situation models separate from presence models.
 11. **Hierarchical taxonomy** (L1→L2) — attach specialists to the tree.
@@ -299,22 +299,6 @@ make up && make schema && make seed
 16. **Composable.** New cameras / models / capabilities / query tools / blob sinks without rewriting the bus.
 17. **Contracts + durable Go services live here.** Other repos consume; they do not fork copies.
 18. **Shared speech models** under `voice/models/` with shared `SHERPA_*` env names.
-
----
-
-## Known gaps & refactor targets
-
-| Item | Status |
-|------|--------|
-| clickhouse-consumer writers for `cv_objects` / `cv_results` / `cv_scenes` | In progress — see TODO.md |
-| `pkg/persistence` wired into object-storage + query-service | TODO |
-| Taxonomy single-source (`domain/taxonomy.yaml` vs scene-router prompts) | Drift — align |
-| docker-compose MinIO port 9000 vs ClickHouse 9000 | Clash — remap MinIO |
-| External `core_net` assumption in compose | Fragile — make internal or document |
-| Service name `voice-query-service` vs `query-service` | Rename for consistency |
-| crop-preparator production NATS/gRPC path | Stub only |
-| core residual README / CMake (`edge_proto` without local proto/) | Needs cleanup |
-| rf-detr + camera-connector still private | Consider public if demos need them |
 
 ---
 

@@ -3,9 +3,9 @@
 Protos, ClickHouse schema, NATS subject map, and the **in-tree Go scaffolding**
 live **only** here. Other repos vendor or generate; they do not keep a private copy that drifts.
 
-## query-service (Go - this repo)
+## voice-query-service (Go - this repo)
 
-The HTTP + MCP read path lives under `query-service/`. Contracts (`voice.v1`)
+The HTTP + MCP read path lives under `voice-query-service/`. Contracts (`voice.v1`)
 are the source of truth in `proto/voice/`.
 
 What consumers / the production voice-query-service must do:
@@ -25,7 +25,7 @@ What consumers / the production voice-query-service must do:
 3. Point SELECTs at the `query_*` views (`seed/sql/003_views.sql`). Prefer the
    shared client in `pkg/persistence` (`Conn()` for reads; never CREATE TABLE).
 
-4. The in-tree `query-service/` is demo/scaffolding aligned to these contracts.
+4. The in-tree `voice-query-service/` is demo/scaffolding aligned to these contracts.
    Production deployments may still run a dedicated binary; they must consume
    protos and schema from this repo.
 
@@ -34,7 +34,7 @@ What consumers / the production voice-query-service must do:
 `object-storage/` implements the `storage.v1.ObjectStorageService` surface
 (HTTP today; gRPC once `make generate` stubs are wired). After a successful
 Put it should write an `object_meta` row via `pkg/persistence.InsertObjectMeta`
-so query-service and ClickHouse can join blobs back to `cv.object.*` /
+so voice-query-service and ClickHouse can join blobs back to `cv.object.*` /
 `cv.scene.*` / transcripts.
 
 Do not invent a second metadata schema.
@@ -50,7 +50,7 @@ Do not invent a second metadata schema.
 | temporal-classifier  | `scene.v1.SceneResult` (same message, refined)|
 | alpr-consumer        | `detection.v1` (ObjectEnvelope in, CapabilityResult out) |
 | audio-client         | `audio.v1`, `ingest.v1`                      |
-| voice/agent          | HTTP to query-service; optional `voice.v1`   |
+| voice/agent          | HTTP to voice-query-service; optional `voice.v1`   |
 
 `frame_id` is `int64` everywhere, including `SceneResult` (was `string`).
 
@@ -58,7 +58,7 @@ Do not invent a second metadata schema.
 
 | Package | Purpose | Used by |
 |---------|---------|---------|
-| `pkg/persistence` | ClickHouse native client + typed insert helpers. **No DDL.** | clickhouse-consumer, object-storage (`InsertObjectMeta`), query-service (`Conn()` + SELECTs) |
+| `pkg/persistence` | ClickHouse native client + typed insert helpers. **No DDL.** | clickhouse-consumer, object-storage (`InsertObjectMeta`), voice-query-service (`Conn()` + SELECTs) |
 | `pkg/natsjs` | JetStream connect / stream wait / pull consumers | nats-publisher, clickhouse-consumer, aggregator |
 
 Any Go services should depend on these modules rather than re-implementing logic.

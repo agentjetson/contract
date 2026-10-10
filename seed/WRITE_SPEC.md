@@ -1,7 +1,7 @@
 # ClickHouse writer spec
 
 One durable store. One writer. Schema is applied by `make schema` (this repo),
-not by `core/src/clickhouse_consumer` and not by `query-service` `ApplySchema`.
+not by `core/src/clickhouse_consumer` and not by `voice-query-service` `ApplySchema`.
 
 ## Subscribe
 
@@ -30,7 +30,7 @@ Scene labels on objects/results (`scene_l1`, `scene_l2`) are filled by the write
 ## Who must stop creating tables
 
 - `core/src/clickhouse_consumer/main.cpp` — drop the inline `CREATE TABLE` strings; assume this schema exists. Add writers for objects / results / scenes.
-- `voice/query-service/internal/clickhouse/client_clickhouse.go` `ApplySchema` — delete it. Query the `query_*` views (see `003_views.sql`).
+- `voice/voice-query-service/internal/clickhouse/client_clickhouse.go` `ApplySchema` — delete it. Query the `query_*` views (see `003_views.sql`).
 - Core `docker-compose.yml` — remove the `clickhouse` service; point `CLICKHOUSE_HOST` at this compose.
 
 ## video_server
@@ -43,7 +43,7 @@ FROM cv_detections
 WHERE source = ... AND frame_id >= ...
 ```
 
-## query-service SQL swap
+## voice-query-service SQL swap
 
 | Old table            | New view                 |
 | -------------------- | ------------------------ |

@@ -5,7 +5,7 @@
 Stores binary artefacts (audio segments, continuous / event video, frame
 snapshots, crops, annotated clips) in an S3-compatible backend (**RustFS** by
 default, or MinIO / AWS S3) or a local filesystem for demos.  Every successful
-put writes a correlation row that query-service and ClickHouse can join back to
+put writes a correlation row that voice-query-service and ClickHouse can join back to
 `cv.object.*`, `cv.scene.*`, `audio.transcript`, and `cv.alert`.
 
 This is a **pure consumer / sink** relative to the CV + audio pipeline: nothing
@@ -21,13 +21,13 @@ embed in their existing envelopes or ClickHouse rows.
 | Concern | C++ (edge path) | Go (this service) |
 | --- | --- | --- |
 | Role | ONNX inference, low-latency capture | Durable blob I/O + metadata |
-| Existing pattern | object-classifier, alpr-consumer, rf-detr | **query-service** (same monorepo family) |
+| Existing pattern | object-classifier, alpr-consumer, rf-detr | **voice-query-service** (same monorepo family) |
 | Libraries | OpenCV, ORT, gRPC-C++ | minio-go, aws-sdk-go, native gRPC |
 | Ops | Jetson builds, CUDA | Docker / K8s, trivial cross-compile |
 | Correlation | Not needed at edge | ClickHouse writer, ListObjects by time/source |
 
 **Recommendation: keep the gRPC object-storage service in Go**, matching
-`voice/query-service`.  The edge producers stay C++; they only need a thin
+`voice/voice-query-service`.  The edge producers stay C++; they only need a thin
 HTTP client (or the future gRPC client) to ship blobs.  Contracts live in
 `proto/storage/v1` and will move into the shared Buf package alongside the
 other `agentjetson/core` protos.
@@ -45,7 +45,7 @@ camera-connector --ingest                             ├── object_meta → 
        │                                              │
        └── PutObject(CAMERA_RECORDING / FRAME) ───────┘
                                                       │
-query-service ◄── ListObjects / GetPresignedURL ──────┘
+voice-query-service ◄── ListObjects / GetPresignedURL ──────┘
        │
        └── joins object_id / storage_key with cv.* + audio.transcript
 ```
@@ -209,7 +209,7 @@ buf generate   # produces gen/storage/v1 + gen/common/v1
 
 1. **audio-client** (optional): after a final transcript, also `PutObject(AUDIO_TRANSCRIPT)` with the raw audio window; store returned `object_id` on the `Transcript` (once the field is added in core).
 2. **camera-connector --ingest**: rolls MP4 segments and POSTs them as `kind=camera_recording`; attach returned `object_id` to correlating alerts / evidence when available.
-3. **query-service**: add MCP / HTTP tools `query_recordings`, `get_presigned_url` that read `object_meta` (and optionally live ListObjects).
+3. **voice-query-service**: add MCP / HTTP tools `query_recordings`, `get_presigned_url` that read `object_meta` (and optionally live ListObjects).
 4. **core clickhouse_consumer**: no change required until you want NATS-driven archival; the preferred path is direct HTTP/gRPC from the edge producer.
 
 ---
@@ -218,7 +218,7 @@ buf generate   # produces gen/storage/v1 + gen/common/v1
 
 1. **Capture is not classification; storage is not correlation.**  This service only stores and indexes blobs.
 2. **ObjectEnvelope / SceneResult / Transcript stay the stable event contracts.**  Object-storage is an additive evidence plane.
-3. **query-service remains a pure consumer.**  It may call GetPresignedURL / ListObjects; it never writes blobs.
+3. **voice-query-service remains a pure consumer.**  It may call GetPresignedURL / ListObjects; it never writes blobs.
 4. **Edge-first producers, central durable store.**  Heavy inference stays on-device; blobs land in object storage as soon as the network allows.
 5. **Contracts in `.proto` files**, generated with Buf, shared via `agentjetson/core`.
 

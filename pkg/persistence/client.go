@@ -1,6 +1,6 @@
 // Package persistence is the shared ClickHouse write/read layer for
 // agentjetson/core services (clickhouse-consumer, object-storage,
-// query-service). Schema is owned exclusively by seed/sql — this package
+// voice-query-service). Schema is owned exclusively by seed/sql — this package
 // never issues CREATE TABLE.
 package persistence
 
@@ -86,7 +86,7 @@ func Open(cfg Config) (*Client, error) {
 }
 
 // Conn exposes the underlying driver connection for advanced use
-// (e.g. query-service SELECTs against query_* views).
+// (e.g. voice-query-service SELECTs against query_* views).
 func (c *Client) Conn() driver.Conn { return c.conn }
 
 // Ping checks connectivity.

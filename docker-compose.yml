@@ -234,7 +234,7 @@ services:
   voice-query-service:
     build:
       context: .
-      dockerfile: query-service/Dockerfile
+      dockerfile: voice-query-service/Dockerfile
     ports:
       - "8080:8080"
     environment:

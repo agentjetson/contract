@@ -1,11 +1,11 @@
--- AgentJetson ClickHouse — query-service compatibility views
+-- AgentJetson ClickHouse — voice-query-service compatibility views
 --
 -- Canonical tables use proto field names (ts, source, class_name, ocr_text).
 -- voice-query-service historically queried a competing shape
 -- (event_time, camera_id, plate, class, ...). These views are the adapter:
 -- the Go service should SELECT from query_* instead of CREATE TABLE of its own.
 --
--- ApplySchema in query-service/internal/clickhouse MUST go away.
+-- ApplySchema in voice-query-service/internal/clickhouse MUST go away.
 
 CREATE OR REPLACE VIEW query_cv_results AS
 SELECT

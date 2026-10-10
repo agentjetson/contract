@@ -24,8 +24,11 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
@@ -33,18 +36,18 @@ import (
 	"google.golang.org/grpc"
 )
 
-// Init configures the global TracerProvider and TextMapPropagator.
+// Init configures the global TracerProvider, LoggerProvider, and TextMapPropagator.
 // serviceName is used when OTEL_SERVICE_NAME is unset.
 // The returned shutdown flushes exporters; call it on process exit.
 //
-// Init also installs SetupLogging() so slog records include trace_id/span_id
-// when the call uses a context that carries an active span.
+// Init also installs SetupLogging() so slog records go to stdout JSON and to
+// the OTLP log pipeline (collector → Loki). Prefer slog.*Context so trace_id
+// is correlated when a span is active.
 func Init(ctx context.Context, serviceName string) (shutdown func(context.Context) error, err error) {
 	noop := func(context.Context) error { return nil }
 
-	SetupLogging()
-
 	if disabled() {
+		SetupLogging("") // stdout only
 		slog.Info("otel disabled (OTEL_SDK_DISABLED)")
 		return noop, nil
 	}
@@ -69,18 +72,6 @@ func Init(ctx context.Context, serviceName string) (shutdown func(context.Contex
 		insecure = false
 	}
 
-	opts := []otlptracegrpc.Option{
-		otlptracegrpc.WithEndpoint(endpoint),
-	}
-	if insecure {
-		opts = append(opts, otlptracegrpc.WithInsecure())
-	}
-
-	exp, err := otlptracegrpc.New(ctx, opts...)
-	if err != nil {
-		return noop, fmt.Errorf("otel otlp exporter: %w", err)
-	}
-
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceName(serviceName),
@@ -90,12 +81,23 @@ func Init(ctx context.Context, serviceName string) (shutdown func(context.Contex
 		resource.WithHost(),
 	)
 	if err != nil {
-		_ = exp.Shutdown(ctx)
 		return noop, fmt.Errorf("otel resource: %w", err)
 	}
 
+	// --- traces ---
+	traceOpts := []otlptracegrpc.Option{
+		otlptracegrpc.WithEndpoint(endpoint),
+	}
+	if insecure {
+		traceOpts = append(traceOpts, otlptracegrpc.WithInsecure())
+	}
+	traceExp, err := otlptracegrpc.New(ctx, traceOpts...)
+	if err != nil {
+		return noop, fmt.Errorf("otel otlp trace exporter: %w", err)
+	}
+
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exp,
+		sdktrace.WithBatcher(traceExp,
 			sdktrace.WithBatchTimeout(5*time.Second),
 		),
 		sdktrace.WithResource(res),
@@ -107,13 +109,45 @@ func Init(ctx context.Context, serviceName string) (shutdown func(context.Contex
 		propagation.Baggage{},
 	))
 
+	// --- logs ---
+	logOpts := []otlploggrpc.Option{
+		otlploggrpc.WithEndpoint(endpoint),
+	}
+	if insecure {
+		logOpts = append(logOpts, otlploggrpc.WithInsecure())
+	}
+	logExp, err := otlploggrpc.New(ctx, logOpts...)
+	if err != nil {
+		_ = tp.Shutdown(ctx)
+		return noop, fmt.Errorf("otel otlp log exporter: %w", err)
+	}
+
+	lp := sdklog.NewLoggerProvider(
+		sdklog.WithProcessor(sdklog.NewBatchProcessor(logExp)),
+		sdklog.WithResource(res),
+	)
+	global.SetLoggerProvider(lp)
+
+	// slog → stdout JSON + OTLP (after LoggerProvider is global)
+	SetupLogging(serviceName)
+
 	slog.Info("otel initialized",
 		"service", serviceName,
 		"endpoint", endpoint,
 		"insecure", insecure,
+		"signals", "traces+logs",
 	)
 
-	return tp.Shutdown, nil
+	return func(ctx context.Context) error {
+		var first error
+		if err := lp.Shutdown(ctx); err != nil && first == nil {
+			first = err
+		}
+		if err := tp.Shutdown(ctx); err != nil && first == nil {
+			first = err
+		}
+		return first
+	}, nil
 }
 
 // Tracer returns a named tracer from the global provider.

@@ -18,7 +18,7 @@ SG[scene-gate<br/>profile + audio intent → SceneResult]
 AGG[aggregator<br/>correlate + watchlist]
 CHC[clickhouse-consumer<br/>JetStream → CH]
 CH[(ClickHouse)]
-VQS[query-service<br/>Go · HTTP :8080 · MCP]
+VQS[voice-query-service<br/>Go · HTTP :8080 · MCP]
 OBS[object-storage<br/>Go · HTTP :8081 · gRPC :50055]
 NATS[NATS JetStream]
 end
@@ -163,7 +163,7 @@ Audio path (body-cam / POV):
 - **scene-gate** — per-camera policy: fixed-role profile short-circuit + audio intent → `SceneResult`; otherwise forward to visual path. Config: `domain/camera_profiles.yaml` + `domain/taxonomy.yaml`.
 - **aggregator** — correlates objects + capability results; emits `cv.alert`.
 - **clickhouse-consumer** — durable JetStream → ClickHouse writers.
-- **query-service** — read-only HTTP `:8080` + MCP; never publishes.
+- **voice-query-service** — read-only HTTP `:8080` + MCP; never publishes.
 - **object-storage** — blob sink HTTP `:8081` / gRPC `:50055`; metadata to CH.
 
 ### Core residual (C++)
@@ -172,7 +172,7 @@ Audio path (body-cam / POV):
 
 ### Voice (C++)
 - **audio-client** — pure STT recorder + live gRPC + optional ingest.
-- **agent** — interactive front-end; calls query-service for scene-aware answers.
+- **agent** — interactive front-end; calls voice-query-service for scene-aware answers.
 
 ## Adding a new specialist (e.g. vehicle colour)
 
@@ -185,7 +185,7 @@ Audio path (body-cam / POV):
 ## Known gaps (see also TODO.md)
 
 - clickhouse-consumer must fully write `cv_objects` / `cv_results` / `cv_scenes` (partial today).
-- `pkg/persistence` integration into object-storage + query-service unfinished.
+- `pkg/persistence` integration into object-storage + voice-query-service unfinished.
 - Taxonomy: `domain/taxonomy.yaml` vs scene-router README prompts — single-source required.
 - docker-compose: MinIO vs ClickHouse port 9000 clash; external `core_net` assumption.
 - scene-gate frame-side notify (optional side-channel from camera-connector) still TBD; audio path is primary.

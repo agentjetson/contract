@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # Build from monorepo root:
-#   docker build -f query-service/Dockerfile -t voice-query-service .
+#   docker build -f voice-query-service/Dockerfile -t voice-query-service .
 #
 # Uses pkg/persistence for ClickHouse; schema is owned by seed/sql.
 
@@ -9,9 +9,9 @@ WORKDIR /src
 
 COPY pkg/persistence /src/pkg/persistence
 COPY pkg/otel /src/pkg/otel
-COPY query-service /src/query-service
+COPY voice-query-service /src/voice-query-service
 
-WORKDIR /src/query-service
+WORKDIR /src/voice-query-service
 RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/voice-query-service ./cmd/server
 
 FROM gcr.io/distroless/static-debian12:nonroot

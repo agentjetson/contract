@@ -5,19 +5,78 @@ import (
 	"log/slog"
 	"os"
 
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// SetupLogging installs a JSON slog default that injects trace_id and span_id
-// from the active span in context (when present). Call after Init so resource
-// attributes are ready; safe to call even when the SDK is disabled.
+// SetupLogging installs the default slog handler.
 //
-// Prefer slog.InfoContext / ErrorContext so the handler can see the span:
+// When serviceName is non-empty (normal Init path), records go to:
+//  1. stdout as JSON (with trace_id/span_id when ctx has a span)
+//  2. OTLP logs via the global LoggerProvider (collector → Loki)
+//
+// When serviceName is empty (OTEL_SDK_DISABLED), only stdout is used.
+//
+// Prefer slog.InfoContext / ErrorContext so handlers can see the span:
 //
 //	slog.InfoContext(ctx, "ingested alert", "frame", id)
-func SetupLogging() {
-	h := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
-	slog.SetDefault(slog.New(&traceHandler{inner: h}))
+func SetupLogging(serviceName string) {
+	var stdout slog.Handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+	stdout = &traceHandler{inner: stdout}
+
+	if serviceName == "" {
+		slog.SetDefault(slog.New(stdout))
+		return
+	}
+
+	// Bridges slog → OTEL Logs API; correlates via span in ctx automatically.
+	otelH := otelslog.NewHandler(serviceName)
+
+	slog.SetDefault(slog.New(&multiHandler{handlers: []slog.Handler{stdout, otelH}}))
+}
+
+// multiHandler fans a record out to several handlers (stdout + OTLP).
+type multiHandler struct {
+	handlers []slog.Handler
+}
+
+func (m *multiHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	for _, h := range m.handlers {
+		if h.Enabled(ctx, level) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *multiHandler) Handle(ctx context.Context, r slog.Record) error {
+	var first error
+	for _, h := range m.handlers {
+		if !h.Enabled(ctx, r.Level) {
+			continue
+		}
+		// Clone so each handler can safely add attrs / consume the record.
+		if err := h.Handle(ctx, r.Clone()); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+func (m *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	next := make([]slog.Handler, len(m.handlers))
+	for i, h := range m.handlers {
+		next[i] = h.WithAttrs(attrs)
+	}
+	return &multiHandler{handlers: next}
+}
+
+func (m *multiHandler) WithGroup(name string) slog.Handler {
+	next := make([]slog.Handler, len(m.handlers))
+	for i, h := range m.handlers {
+		next[i] = h.WithGroup(name)
+	}
+	return &multiHandler{handlers: next}
 }
 
 // traceHandler wraps an slog.Handler and adds trace_id / span_id attrs from ctx.

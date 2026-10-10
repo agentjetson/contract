@@ -22,7 +22,7 @@ enum ObjectKind {
   OBJECT_KIND_OTHER = 99;
 }
 
-// Metadata that lets ClickHouse (and query-service) join a blob back to
+// Metadata that lets ClickHouse (and voice-query-service) join a blob back to
 // cv.object.*, cv.scene.*, audio.transcript, cv.alert rows.
 message ObjectMeta {
   string object_id          = 1;   // UUID assigned by the service

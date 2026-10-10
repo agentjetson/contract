@@ -1,5 +1,5 @@
 -- AgentJetson ClickHouse — canonical tables
--- Single source of truth. Core clickhouse_consumer and query-service MUST NOT
+-- Single source of truth. Core clickhouse_consumer and voice-query-service MUST NOT
 -- CREATE TABLE on their own; they consume this schema.
 --
 -- Mapping: proto → NATS subject → table  (see seed/WRITE_SPEC.md)
@@ -11,7 +11,7 @@
 --   audio.v1.Transcript             audio.transcript audio_transcripts
 --
 -- JPEG / crop bytes are transport-only and are never stored.
--- query-service reads the query_* VIEWS in 003_views.sql (column aliases).
+-- voice-query-service reads the query_* VIEWS in 003_views.sql (column aliases).
 -- video_server reads cv_detections physical columns (frame_id, class_id, ...).
 
 -- ---------------------------------------------------------------------------
@@ -165,7 +165,7 @@ TTL toDateTime(ts) + INTERVAL 90 DAY;
 
 -- Object-storage metadata table.
 -- Written by object-storage service after every successful Put*.
--- Queried by query-service (and future correlation jobs) to join
+-- Queried by voice-query-service (and future correlation jobs) to join
 -- blobs back to cv.object.*, cv.scene.*, audio.transcript, cv.alert.
 
 CREATE TABLE IF NOT EXISTS object_meta
