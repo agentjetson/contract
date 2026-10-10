@@ -188,9 +188,8 @@ CREATE TABLE IF NOT EXISTS object_meta
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(event_ts)
 ORDER BY (source, kind, event_ts, object_id)
-TTL event_ts + INTERVAL 365 DAY DELETE
+TTL toDateTime(event_ts) + INTERVAL 365 DAY DELETE
 SETTINGS index_granularity = 8192;
-
 -- Secondary index for frame_id correlation (common join path).
 ALTER TABLE object_meta
     ADD INDEX IF NOT EXISTS idx_frame_id frame_id TYPE minmax GRANULARITY 4;
