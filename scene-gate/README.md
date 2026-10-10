@@ -17,11 +17,12 @@ Scene-gate is policy/routing, not inference. No pixels, no ONNX. Taxonomy + prof
 ```
 edge C++                          core (Go)
 ────────                          ─────────
-camera / audio-client  ──transcript─► scene-gate
-registered sources ──startup─────► EmitNow backend=profile
+scene-router / camera  ──cv.source.*──► scene-gate (dynamic register)
+audio-client           ──transcript───► scene-gate
+camera_sources.yaml    ──startup──────► EmitNow backend=profile (bootstrap)
                                        │
                           EmitNow ─────┼──► IngestScene → cv.scene.*
-                          ForwardVisual│    (edge scene-router unless SKIP_VISUAL)
+                          ForwardVisual│    (edge unless SKIP_VISUAL)
                           Abstain ─────┘
 ```
 
@@ -33,35 +34,42 @@ registered sources ──startup─────► EmitNow backend=profile
 |------|------|
 | `domain/taxonomy.yaml` | Authoritative L1→L2 + specialists |
 | `domain/camera_profiles.yaml` | Per-pattern profiles + audio_intents |
-| `domain/camera_sources.yaml` | **Registered source ids** for profile emit |
+| `domain/camera_sources.yaml` | Optional **bootstrap** source ids |
 | `TAXONOMY_PATH` / `CAMERA_PROFILES_PATH` / `CAMERA_SOURCES_PATH` | Env overrides |
 
-### Fixed-role profile emit
+### Dynamic registration (`cv.source.*`)
 
-List concrete units in `camera_sources.yaml`:
+Edge publishes JSON (or future protobuf `capture.v1.SourceEvent`):
 
-```yaml
-sources:
-  - id: front-cam-01
-  - id: cabin-unit-01
+```json
+{"event":"up","source_id":"front-cam-01"}
+{"event":"heartbeat","source_id":"front-cam-01"}
+{"event":"down","source_id":"front-cam-01"}
 ```
 
-On startup (when `EMIT_PROFILES=true`, default), for each id the gate runs **OnFrame**:
+Subjects (on stream `CV_EVENTS`):
 
-- Profile matches `skip_visual` + `l1_prior` → **EmitNow** (`backend=profile`, specialists from profile/taxonomy).
-- Otherwise log ForwardVisual/Abstain and skip publish.
+| Subject | Meaning |
+|---------|---------|
+| `cv.source.up` | Source online — gate runs OnFrame; EmitNow if `skip_visual` profile |
+| `cv.source.heartbeat` | Still alive — re-emit profile after `SOURCE_DEBOUNCE_SEC` |
+| `cv.source.down` | Offline — drop from live set |
 
-Optional refresh: `PROFILE_REFRESH_MIN=15` re-emits on that interval (0 = startup only).
+Gate best-effort updates the stream to include `cv.source.>` if missing.
 
-Edge should still set `SKIP_VISUAL_SOURCES=front-*,cabin-*` so SigLIP does not run on those units.
+`scene-router` with `SOURCE_ID` + `NATS_URL` publishes these (including skip-visual idle heartbeats).
+
+### Static bootstrap
+
+Still optional via `camera_sources.yaml` + `EMIT_PROFILES` for deploys before edge lifecycle exists.
 
 ### Source ID naming
 
 | Deployment | Set `SOURCE` / source_id to | Profile match |
 |------------|----------------------------|---------------|
 | Officer body-cam | `bodycam-12` | `bodycam-*` (audio path) |
-| Front plate cam | `front-cam-01` | `front-*` + list in camera_sources |
-| Cabin / driver | `cabin-unit-01` | `cabin-*` + list in camera_sources |
+| Front plate cam | `front-cam-01` | `front-*` |
+| Cabin / driver | `cabin-unit-01` | `cabin-*` |
 
 Body-cam production: `SOURCE=bodycam-12` on audio-client (not `mic`).
 
@@ -69,42 +77,33 @@ Body-cam production: `SOURCE=bodycam-12` on audio-client (not `mic`).
 
 ## Behaviour
 
-1. **Startup / refresh** — profile SceneResults for registered fixed-role sources.
-2. **`audio.transcript`** — phrase → L2; high conf → EmitNow `backend=audio`.
-3. **CLI** — `--source-id front-cam-01` or `--emit-profiles` for bring-up without NATS.
-
-Dual scenes: if audio and visual both fire for the same source, prefer filtering by `backend` / confidence; fixed cams should not run visual at all.
+1. **Dynamic** — `cv.source.up` / heartbeat → profile SceneResult when profile says EmitNow.
+2. **Startup bootstrap** — static `camera_sources.yaml` when `EMIT_PROFILES=true`.
+3. **`audio.transcript`** — phrase → L2; high conf → EmitNow `backend=audio`.
+4. **CLI** — `--source-id` / `--emit-profiles` without NATS.
 
 ---
 
 ## Run
 
 ```bash
-# Live (NATS + ingest + profile emit + audio)
 TAXONOMY_PATH=../domain/taxonomy.yaml \
 CAMERA_PROFILES_PATH=../domain/camera_profiles.yaml \
 CAMERA_SOURCES_PATH=../domain/camera_sources.yaml \
 NATS_URL=nats://localhost:4222 \
 INGEST_ADDR=localhost:50052 \
+DYNAMIC_SOURCES=true \
   go run ./cmd/scene-gate
-
-# Bring-up single source
-go run ./cmd/scene-gate --source-id front-cam-01
-go run ./cmd/scene-gate --source-id bodycam-12 --simulate-audio "initiating traffic stop"
-
-# Emit all registered profiles and exit (no NATS)
-go run ./cmd/scene-gate --emit-profiles
 ```
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `EMIT_PROFILES` | `true` | Startup profile emit from camera_sources |
-| `PROFILE_REFRESH_MIN` | `0` | Minutes between re-emits; 0 = once |
-| `CAMERA_SOURCES_PATH` | `/config/camera_sources.yaml` | Registered source ids |
-| `NATS_URL` | `nats://localhost:4222` | |
-| `INGEST_ADDR` | `localhost:50052` | |
-| `CAMERA_PROFILES_PATH` | `/config/camera_profiles.yaml` | |
-| `TAXONOMY_PATH` | `/config/taxonomy.yaml` | |
+| `DYNAMIC_SOURCES` | `true` | Consume `cv.source.>` |
+| `SOURCE_SUBJECT` | `cv.source.>` | JetStream filter |
+| `SOURCE_DEBOUNCE_SEC` | `60` | Min seconds between profile emits per source |
+| `EMIT_PROFILES` | `true` | Startup emit from camera_sources |
+| `PROFILE_REFRESH_MIN` | `0` | Static list refresh; 0 = once |
+| `STREAM_EVENTS` | `CV_EVENTS` | Must include `cv.source.>` |
 
 ---
 
@@ -113,6 +112,6 @@ go run ./cmd/scene-gate --emit-profiles
 1. Same taxonomy as scene-router / temporal-classifier.
 2. SceneResult remains the upstream situation contract.
 3. Specialists stay pure consumers.
-4. Fixed cameras: skip visual on edge + profile scene from gate.
+4. Fixed cameras: skip visual on edge + profile scene from gate (static and/or dynamic).
 5. Body-cam leans on speech when the officer announces the situation.
 6. `Transcript.source` / camera `source_id` must match profile patterns.
