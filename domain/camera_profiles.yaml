@@ -1,0 +1,89 @@
+# Per-camera / per-source profiles for scene-gate.
+# Authoritative copy — edge C++ scaffold and scene-router should stay aligned.
+# match: exact source_id or simple prefix/glob (trailing *)
+# All L2 labels and specialists must exist in domain/taxonomy.yaml.
+
+version: 1
+
+# Global defaults applied when no profile matches
+defaults:
+  l1_prior: null
+  specialists_always: []
+  specialists_allowed: []          # empty = allow anything from taxonomy
+  skip_visual: false
+  audio_primary: false
+  visual_abstain_threshold: 0.60
+  audio_confidence_threshold: 0.70
+
+profiles:
+  # Fixed roadside / front plate camera — pure ALPR path
+  - match: "front-*"
+    description: Fixed front / plate camera
+    l1_prior: roadway
+    specialists_always: [alpr, speed, vehicle_attr]
+    specialists_allowed: [alpr, speed, vehicle_attr]
+    skip_visual: true
+    audio_primary: false
+
+  # Cabin / driver-facing
+  - match: "cabin-*"
+    description: In-cabin driver supervision
+    l1_prior: facility
+    specialists_always: [face, person_attr]
+    specialists_allowed: [face, person_attr]
+    skip_visual: true
+    audio_primary: false
+
+  # Body-worn camera — audio-first, visual as fallback
+  - match: "bodycam-*"
+    description: Officer body-cam (POV)
+    l1_prior: null
+    specialists_always: []
+    specialists_allowed: [alpr, person_attr, face, vehicle_attr, speed]
+    skip_visual: false
+    audio_primary: true
+    visual_abstain_threshold: 0.75
+    audio_confidence_threshold: 0.65
+
+  # Dashcam looking outward
+  - match: "dashcam-*"
+    description: Vehicle dashcam outward
+    l1_prior: roadway
+    specialists_always: []
+    specialists_allowed: [alpr, speed, vehicle_attr]
+    skip_visual: false
+    audio_primary: false
+    visual_abstain_threshold: 0.65
+
+# Audio phrase → L2 mapping (used when audio_primary or when an intent event arrives)
+# Phrases are matched case-insensitively; first hit wins.
+audio_intents:
+  - phrases:
+      - "initiating traffic stop"
+      - "traffic stop"
+      - "step out of the vehicle"
+      - "license and registration"
+      - "do you know why i pulled you over"
+    l2: traffic_stop
+    confidence: 0.90
+
+  - phrases:
+      - "you're free to go"
+      - "you are free to go"
+      - "drive safe"
+      - "have a good day"
+    l2: driving
+    confidence: 0.80
+
+  - phrases:
+      - "pedestrian stop"
+      - "stay where you are"
+    l2: gathering
+    confidence: 0.75
+
+  - phrases:
+      - "crash"
+      - "collision"
+      - "accident on scene"
+    l2: crash
+    confidence: 0.85
