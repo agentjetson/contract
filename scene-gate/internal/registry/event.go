@@ -20,11 +20,12 @@ func ParseJSON(data []byte) (Event, error) {
 	if err := json.Unmarshal(data, &e); err != nil {
 		return Event{}, err
 	}
-	e.normalize()
+	e.Normalize()
 	return e, nil
 }
 
-func (e *Event) normalize() {
+// Normalize lowercases the event type and fills SourceID from Source when needed.
+func (e *Event) Normalize() {
 	e.Event = strings.ToLower(strings.TrimSpace(e.Event))
 	if e.SourceID == "" {
 		e.SourceID = strings.TrimSpace(e.Source)

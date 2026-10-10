@@ -250,7 +250,7 @@ func handleSourceEvent(ctx context.Context, engine *decision.Engine, publisher *
 		parts := splitSubject(subject)
 		if len(parts) >= 3 {
 			ev.Event = parts[2]
-			ev.normalize()
+			ev.Normalize()
 		}
 	}
 	id := ev.ID()
