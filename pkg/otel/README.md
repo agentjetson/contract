@@ -2,8 +2,9 @@
 
 Shared OpenTelemetry bootstrap for AgentJetson Go microservices.
 
-Traces are exported over OTLP/gRPC to the `otel-collector` service already
-present in `docker-compose.yml`.
+Traces export over OTLP/gRPC to `otel-collector`, which fans out to **Tempo**.
+Structured logs (stdout JSON) carry `trace_id` / `span_id` when the log call
+uses a context with an active span — Grafana Loki derives a link to Tempo.
 
 ## Usage
 
@@ -15,15 +16,21 @@ if err != nil {
     os.Exit(1)
 }
 defer func() { _ = shutdown(context.Background()) }()
+// SetupLogging is called inside Init — slog.InfoContext will include trace_id.
 
-// gRPC server
 grpcServer := grpc.NewServer(otel.GRPCServerOption())
 
-// gRPC client
-conn, err := grpc.NewClient(addr, append(otel.GRPCDialOptions(), grpc.WithTransportCredentials(...))...)
+conn, err := grpc.NewClient(addr, append(
+    otel.GRPCDialOptions(),
+    grpc.WithTransportCredentials(insecure.NewCredentials()),
+)...)
 
-// HTTP
 http.ListenAndServe(addr, otel.HTTPHandler("http.server", mux))
+
+// Prefer context-aware logging so Loki can join on trace_id:
+sctx, span := otel.StartSpan(ctx, "ingest", "IngestAlert")
+defer span.End()
+slog.InfoContext(sctx, "ingested alert", "frame", id)
 ```
 
 ## Environment
@@ -35,7 +42,12 @@ http.ListenAndServe(addr, otel.HTTPHandler("http.server", mux))
 | `OTEL_EXPORTER_OTLP_INSECURE` | `true` | Skip TLS (local stack) |
 | `OTEL_SDK_DISABLED` | unset | Set `true` to no-op |
 
-## Consumers
+## LGT UI
 
-All Go services in this monorepo call `otel.Init` at startup and pass
-`otel.GRPCServerOption` / `otel.HTTPHandler` where applicable.
+| Signal | Backend | Grafana |
+|--------|---------|---------|
+| Traces | Tempo `:3200` | Explore → Tempo |
+| Logs | Loki `:3100` | Explore → Loki (default) |
+| UI | Grafana `:3000` | admin / admin |
+
+Click `trace_id` on a Loki log line to open the Tempo waterfall.
