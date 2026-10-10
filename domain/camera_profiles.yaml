@@ -1,7 +1,10 @@
 # Per-camera / per-source profiles for scene-gate.
-# Authoritative copy — edge C++ scaffold and scene-router should stay aligned.
+# Authoritative copy — edge scene-router should honour skip_visual (SKIP_VISUAL_SOURCES).
 # match: exact source_id or simple prefix/glob (trailing *)
 # All L2 labels and specialists must exist in domain/taxonomy.yaml.
+#
+# IMPORTANT: Transcript.source (audio-client SOURCE=) and camera source_id must
+# match these patterns. SOURCE=mic will NOT match bodycam-* / front-* profiles.
 
 version: 1
 
@@ -17,6 +20,8 @@ defaults:
 
 profiles:
   # Fixed roadside / front plate camera — pure ALPR path
+  # Edge: set SKIP_VISUAL_SOURCES=front-*,cabin-* (or load this file) so SigLIP does not run.
+  # Gate OnFrame for these is CLI bring-up only until a source-register notify exists.
   - match: "front-*"
     description: Fixed front / plate camera
     l1_prior: roadway
@@ -35,6 +40,7 @@ profiles:
     audio_primary: false
 
   # Body-worn camera — audio-first, visual as fallback
+  # audio-client MUST set SOURCE=bodycam-<id> (not "mic")
   - match: "bodycam-*"
     description: Officer body-cam (POV)
     l1_prior: null
