@@ -23,32 +23,35 @@ make up   # or: docker compose up -d
 
 Datasources are auto-provisioned from `grafana/provisioning/datasources/`.
 
-## Following a request end-to-end
+## End-to-end `trace_id` flow
 
-1. **gRPC path (best correlation)**  
-   Edge → `ingest` → `nats-publisher` shares one W3C `traceparent`.  
-   Both services use `otel.GRPCServerOption` / `GRPCDialOptions`, so Tempo shows a single trace with child spans.
+```
+edge → ingest (gRPC span)
+         → nats-publisher (gRPC child + nats.publish PRODUCER)
+              ─ NATS header: traceparent ─→ JetStream
+              ↓
+   aggregator / clickhouse-consumer / scene-gate
+         (CONSUMER span via ExtractMsg)
+         aggregator emit.alert continues parent → cv.alert (+ inject)
+```
 
-2. **Logs with `trace_id`**  
-   `pkg/otel.SetupLogging` (called from `Init`) adds `trace_id` and `span_id` to JSON slog lines when you use `slog.InfoContext(ctx, ...)`.  
-   In Grafana Explore → Loki, click the derived **View Trace** field to jump to Tempo.
+1. **gRPC** — `otel.GRPCServerOption` / `GRPCDialOptions` on ingest ↔ nats-publisher and scene-gate → ingest.
+2. **NATS headers** — `pkg/otel.InjectMsg` / `ExtractMsg` (W3C `traceparent` / `tracestate`).
+3. **Logs** — `slog.InfoContext` + SetupLogging adds `trace_id` / `span_id` JSON fields; Grafana derived field jumps to Tempo.
 
-3. **Example Loki queries**
-   ```logql
-   {service_name="ingest"} |= "ingested"
-   {service_name=~"ingest|nats-publisher"} | json | trace_id != ""
-   {service_name="clickhouse-consumer"} |= "ERROR"
-   ```
+### Example queries
 
-4. **Tempo TraceQL**
-   ```
-   { resource.service.name = "ingest" }
-   { name = "IngestAlert" }
-   ```
+**Loki**
+```logql
+{service_name=~"ingest|nats-publisher|aggregator|clickhouse-consumer"} | json | trace_id != ""
+```
 
-## NATS consumers (aggregator, clickhouse-consumer, scene-gate)
-
-These services process messages asynchronously. Spans they create today are **not** automatically linked to the ingest-side `trace_id` unless the publisher embeds trace context in NATS headers (future work). You can still filter by `service_name` and time window in Grafana.
+**Tempo (TraceQL)**
+```
+{ resource.service.name = "ingest" }
+{ name =~ "nats.publish.*" }
+{ name = "emit.alert" }
+```
 
 ## Disable telemetry
 
