@@ -14,6 +14,7 @@ end
 subgraph Contract["agentjetson/core (this repo)"]
 ING[ingest<br/>gRPC :50052 → NATS publisher]
 NP[nats-publisher<br/>JetStream :50051]
+SG[scene-gate<br/>profile + audio intent → SceneResult]
 AGG[aggregator<br/>correlate + watchlist]
 CHC[clickhouse-consumer<br/>JetStream → CH]
 CH[(ClickHouse)]
@@ -66,6 +67,8 @@ RFD -.->|primary model| OC
 RFD -.->|plate model| ALPR
 
 AC -->|IngestTranscript / audio.transcript| ING
+NATS -->|audio.transcript| SG
+SG -->|IngestScene short-circuit| ING
 AC -.->|optional shared STT| VA
 AC -.->|optional PutObject| OBS
 VA -->|transcript| LLM
@@ -83,6 +86,7 @@ style TC fill:#744210,stroke:#f6e05e,color:#fff
 style OC fill:#1a365d,stroke:#63b3ed,color:#fff
 style CP fill:#2c5282,stroke:#90cdf4,color:#fff
 style ING fill:#276749,stroke:#68d391,color:#fff
+style SG fill:#276749,stroke:#68d391,color:#fff
 style AGG fill:#276749,stroke:#68d391,color:#fff
 style ALPR fill:#744210,stroke:#f6e05e,color:#fff
 style RFD fill:#553c9a,stroke:#b794f4,color:#fff
@@ -108,9 +112,9 @@ Canonical map: [`domain/nats-subjects.yaml`](domain/nats-subjects.yaml).
 |-----------------|----------|-------------|-------|
 | `cv.object.<class>` | object-classifier / crop-preparator | alpr-consumer, aggregator, clickhouse-consumer | `cv_objects` |
 | `cv.result.<capability>` | specialists (alpr, …) | aggregator, clickhouse-consumer | `cv_results` |
-| `cv.scene.<level1>` / `cv.scene.result` | scene-router, temporal-classifier | aggregator, clickhouse-consumer | `cv_scenes` |
+| `cv.scene.<level1>` / `cv.scene.result` | scene-router, temporal-classifier, **scene-gate** | aggregator, clickhouse-consumer | `cv_scenes` |
 | `cv.alert` | aggregator | consumer (demo), clickhouse-consumer, video path | `cv_detections` |
-| `audio.transcript` | audio-client | clickhouse-consumer | `audio_transcripts` |
+| `audio.transcript` | audio-client | clickhouse-consumer, **scene-gate** | `audio_transcripts` |
 
 ## Flow
 
@@ -135,13 +139,19 @@ Cameras → object-classifier (or scene-router → object-classifier)
                                    │
                                    ├─► consumer (demo stdout — core)
                                    └─► clickhouse-consumer → ClickHouse
+
+Audio path (body-cam / POV):
+  audio-client → audio.transcript → scene-gate
+       │                                │
+       │                     EmitNow ───┼──► IngestScene (backend=audio|profile)
+       │                     ForwardVisual → edge scene-router still runs
 ```
 
 ## Components
 
 ### Edge (C++)
 - **camera-connector** (private) / **camera-connector-onvif** — capture only.
-- **scene-router** — hierarchical L1→L2 situation; specialist gating hints.
+- **scene-router** — hierarchical L1→L2 situation; specialist gating hints (runs when gate forwards).
 - **temporal-classifier** — MoViNet refine when `temporal_requested`.
 - **object-classifier** — RF-DETR detect + track → `ObjectEnvelope`.
 - **crop-preparator** — multi-ROI crops (production NATS path still TODO).
@@ -150,6 +160,7 @@ Cameras → object-classifier (or scene-router → object-classifier)
 ### Contract (this repo — Go)
 - **ingest** — gRPC `:50052`; fans out to nats-publisher.
 - **nats-publisher** — JetStream publish surface `:50051`.
+- **scene-gate** — per-camera policy: fixed-role profile short-circuit + audio intent → `SceneResult`; otherwise forward to visual path. Config: `domain/camera_profiles.yaml` + `domain/taxonomy.yaml`.
 - **aggregator** — correlates objects + capability results; emits `cv.alert`.
 - **clickhouse-consumer** — durable JetStream → ClickHouse writers.
 - **query-service** — read-only HTTP `:8080` + MCP; never publishes.
@@ -177,3 +188,4 @@ Cameras → object-classifier (or scene-router → object-classifier)
 - `pkg/persistence` integration into object-storage + query-service unfinished.
 - Taxonomy: `domain/taxonomy.yaml` vs scene-router README prompts — single-source required.
 - docker-compose: MinIO vs ClickHouse port 9000 clash; external `core_net` assumption.
+- scene-gate frame-side notify (optional side-channel from camera-connector) still TBD; audio path is primary.

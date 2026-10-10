@@ -30,11 +30,11 @@ subjects:
     table: cv_results
   cv.scene.<level1>:
     proto: scene.v1.SceneResult
-    publisher: scene-router
+    publisher: scene-router | scene-gate (profile / audio short-circuit)
     table: cv_scenes
   cv.scene.result:
     proto: scene.v1.SceneResult
-    publisher: scene-router | temporal-classifier (refined)
+    publisher: scene-router | temporal-classifier (refined) | scene-gate
     table: cv_scenes
   cv.alert:
     proto: detection.v1.Alert
@@ -43,6 +43,7 @@ subjects:
   audio.transcript:
     proto: audio.v1.Transcript
     publisher: audio-client
+    consumers: clickhouse-consumer | scene-gate
     table: audio_transcripts
   cv.crop.<crop_kind>:
     proto: crop.v1.PreparedCrop
