@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	audiov1 "github.com/agentjetson/core/gen/go/audio/v1"
+	"github.com/agentjetson/core/pkg/otel"
 	"github.com/agentjetson/core/scene-gate/internal/config"
 	"github.com/agentjetson/core/scene-gate/internal/decision"
 	"github.com/agentjetson/core/scene-gate/internal/natsjs"
@@ -30,6 +31,16 @@ func main() {
 	simulateAudio := flag.String("simulate-audio", "", "bring-up: simulate OnAudio transcript")
 	emitProfilesOnly := flag.Bool("emit-profiles", false, "bring-up: emit profile scenes for all registered sources and exit")
 	flag.Parse()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	shutdown, err := otel.Init(ctx, "scene-gate")
+	if err != nil {
+		slog.Error("otel", "err", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdown(context.Background()) }()
 
 	cfg := config.Load()
 
@@ -118,9 +129,6 @@ func main() {
 			slog.Info("dynamic sources enabled", "subject", cfg.SourceSubject, "debounce", cfg.SourceDebounce.String())
 		}
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	slog.Info("scene-gate ready",
 		"nats", cfg.NATSURL,
@@ -231,12 +239,10 @@ func emitProfileForSource(ctx context.Context, engine *decision.Engine, publishe
 func handleSourceEvent(ctx context.Context, engine *decision.Engine, publisher *publish.IngestClient, live *registry.Live, data []byte, subject string) {
 	ev, err := registry.ParseJSON(data)
 	if err != nil {
-		// Infer event from subject token when payload is minimal
 		slog.Debug("source event json", "err", err, "subject", subject)
 		return
 	}
 	if ev.Event == "" && subject != "" {
-		// cv.source.up → up
 		parts := splitSubject(subject)
 		if len(parts) >= 3 {
 			ev.Event = parts[2]

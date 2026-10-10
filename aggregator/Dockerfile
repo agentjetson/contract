@@ -9,6 +9,7 @@ RUN curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.47.2/buf-Lin
 
 COPY buf.yaml buf.gen.yaml /src/
 COPY proto /src/proto
+COPY pkg/otel /src/pkg/otel
 COPY aggregator /src/aggregator
 
 # gen/go is not committed — generate at build time

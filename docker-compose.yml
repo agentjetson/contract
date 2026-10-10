@@ -7,8 +7,13 @@
 # Env expected by consumers:
 #   CLICKHOUSE_HOST / PORT / USER / PASSWORD / DB
 #   NATS_URL
+#   OTEL_EXPORTER_OTLP_ENDPOINT (default otel-collector:4317)
 
 name: agentjetson-core
+
+x-otel-env: &otel-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-otel-collector:4317}
+  OTEL_EXPORTER_OTLP_INSECURE: "true"
 
 services:
   clickhouse:
@@ -55,6 +60,8 @@ services:
       context: .
       dockerfile: nats-publisher/Dockerfile
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: nats-publisher
       NATS_URL: ${NATS_URL:-nats://nats:4222}
       GRPC_ADDR: 0.0.0.0:50051
     ports:
@@ -62,6 +69,8 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     restart: unless-stopped
 
   ingest:
@@ -69,10 +78,13 @@ services:
       context: .
       dockerfile: ingest/Dockerfile
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: ingest
       GRPC_ADDR: 0.0.0.0:50052
       PUBLISHER_ADDR: nats-publisher:50051
     depends_on:
       - nats-publisher
+      - otel-collector
     ports:
       - "50052:50052"
     restart: unless-stopped
@@ -83,6 +95,8 @@ services:
       context: .
       dockerfile: scene-gate/Dockerfile
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: scene-gate
       NATS_URL: ${NATS_URL:-nats://nats:4222}
       INGEST_ADDR: ingest:50052
       TAXONOMY_PATH: /config/taxonomy.yaml
@@ -101,6 +115,8 @@ services:
         condition: service_healthy
       ingest:
         condition: service_started
+      otel-collector:
+        condition: service_started
     restart: unless-stopped
 
   # Pure NATS correlator — durables agg-objects / agg-results on CV_EVENTS
@@ -109,6 +125,8 @@ services:
       context: .
       dockerfile: aggregator/Dockerfile
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: aggregator
       NATS_URL: ${NATS_URL:-nats://nats:4222}
       STREAM_EVENTS: CV_EVENTS
       STREAM_ALERTS: CV_ALERTS
@@ -120,6 +138,8 @@ services:
         condition: service_healthy
       nats-publisher:
         condition: service_started
+      otel-collector:
+        condition: service_started
     restart: unless-stopped
 
   clickhouse-consumer:
@@ -128,6 +148,8 @@ services:
       dockerfile: clickhouse-consumer/Dockerfile
     container_name: aj-clickhouse-consumer
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: clickhouse-consumer
       NATS_URL: ${NATS_URL:-nats://nats:4222}
       CLICKHOUSE_HOST: clickhouse
       CLICKHOUSE_PORT: "9000"
@@ -141,6 +163,8 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     restart: unless-stopped
 
   rustfs:
@@ -173,6 +197,8 @@ services:
       context: .
       dockerfile: object-storage/Dockerfile
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: object-storage
       DEMO_MODE: "false"
       CLICKHOUSE_ENABLED: "true"
       CLICKHOUSE_HOST: clickhouse
@@ -197,6 +223,8 @@ services:
         condition: service_healthy
       rustfs:
         condition: service_started
+      otel-collector:
+        condition: service_started
     restart: unless-stopped
 
   voice-query-service:
@@ -207,6 +235,8 @@ services:
     ports:
       - "8080:8080"
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: voice-query-service
       HTTP_ADDR: ":8080"
       DEMO_MODE: "${DEMO_MODE:-false}"
       CLICKHOUSE_HOST: clickhouse
@@ -220,6 +250,8 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     restart: unless-stopped
 
   otel-collector:

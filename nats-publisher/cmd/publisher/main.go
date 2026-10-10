@@ -12,11 +12,22 @@ import (
 	"github.com/agentjetson/core/nats-publisher/internal/config"
 	"github.com/agentjetson/core/nats-publisher/internal/service"
 	"github.com/agentjetson/core/pkg/natsjs"
+	"github.com/agentjetson/core/pkg/otel"
 	"google.golang.org/grpc"
 )
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	shutdown, err := otel.Init(ctx, "nats-publisher")
+	if err != nil {
+		slog.Error("otel", "err", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdown(context.Background()) }()
 
 	cfg := config.Load()
 
@@ -43,11 +54,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(otel.GRPCServerOption())
 	natsv1.RegisterNatsPublisherServiceServer(grpcServer, svc)
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		<-ctx.Done()

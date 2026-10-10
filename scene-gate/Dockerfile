@@ -3,6 +3,7 @@ FROM golang:1.26-bookworm AS builder
 WORKDIR /src
 
 COPY gen/go /src/gen/go
+COPY pkg/otel /src/pkg/otel
 COPY domain /src/domain
 COPY scene-gate /src/scene-gate
 

@@ -10,6 +10,7 @@ RUN curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.47.2/buf-Lin
 COPY buf.yaml buf.gen.yaml /src/
 COPY proto /src/proto
 COPY pkg/persistence /src/pkg/persistence
+COPY pkg/otel /src/pkg/otel
 COPY clickhouse-consumer /src/clickhouse-consumer
 
 # Generate Go stubs into gen/go (matches go.mod replace)

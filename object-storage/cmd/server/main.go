@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/agentjetson/core/pkg/otel"
 	"github.com/agentjetson/core/pkg/persistence"
 	"github.com/agentjetson/object-storage/internal/config"
 	"github.com/agentjetson/object-storage/internal/metadata"
@@ -21,6 +23,17 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	shutdown, err := otel.Init(ctx, "object-storage")
+	if err != nil {
+		log.Fatalf("otel: %v", err)
+	}
+	defer func() { _ = shutdown(context.Background()) }()
+
 	cfg := config.FromEnv()
 	log.Printf("object-storage starting backend=%s demo=%v ch=%v addr=%s",
 		cfg.Backend, cfg.DemoMode, cfg.ClickHouseEnabled, cfg.GRPCAddr)
@@ -29,7 +42,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("backend: %v", err)
 	}
-	ctx := context.Background()
 	if err := backend.EnsureBucket(ctx); err != nil {
 		log.Fatalf("ensure bucket: %v", err)
 	}
@@ -40,7 +52,6 @@ func main() {
 	svc := server.New(backend, meta, cfg.Bucket)
 
 	// Lightweight HTTP surface for health + simple put/get demos.
-	// Full gRPC surface is generated from proto/storage/v1 once Buf is wired.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		h, _ := svc.Health(r.Context(), &server.HealthRequest{})
@@ -73,15 +84,13 @@ func main() {
 	})
 
 	httpAddr := cfg.GRPCAddr
-	// Prefer a distinct HTTP port when GRPC_ADDR looks like pure gRPC.
 	if os.Getenv("HTTP_ADDR") != "" {
 		httpAddr = os.Getenv("HTTP_ADDR")
 	} else {
-		// Default HTTP on 8081 so it does not collide with query-service :8080.
 		httpAddr = "0.0.0.0:8081"
 	}
 
-	httpSrv := &http.Server{Addr: httpAddr, Handler: mux}
+	httpSrv := &http.Server{Addr: httpAddr, Handler: otel.HTTPHandler("http.server", mux)}
 	go func() {
 		log.Printf("HTTP listening on %s", httpAddr)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -89,8 +98,6 @@ func main() {
 		}
 	}()
 
-	// Placeholder gRPC listener — binds the configured port so compose health
-	// checks and future generated stubs can attach without changing env vars.
 	go func() {
 		lis, err := net.Listen("tcp", cfg.GRPCAddr)
 		if err != nil {
@@ -98,14 +105,11 @@ func main() {
 			return
 		}
 		log.Printf("gRPC port reserved on %s (wire generated stubs here)", cfg.GRPCAddr)
-		// Block until process exit; real grpc.Server.Serve goes here after buf generate.
 		<-ctx.Done()
 		_ = lis.Close()
 	}()
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
+	<-ctx.Done()
 	log.Println("shutting down…")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -126,9 +130,6 @@ func buildBackend(cfg config.Config) (storage.Backend, error) {
 	}
 }
 
-// buildMetaStore returns MemoryStore in DEMO_MODE (or when CH is disabled).
-// When CLICKHOUSE_ENABLED=true it opens pkg/persistence and returns ClickHouseStore.
-// The returned closer must be deferred by main.
 func buildMetaStore(cfg config.Config) (metadata.Store, func()) {
 	noop := func() {}
 	if cfg.DemoMode || !cfg.ClickHouseEnabled {
@@ -151,10 +152,6 @@ func buildMetaStore(cfg config.Config) (metadata.Store, func()) {
 	return metadata.NewClickHouseStore(ch), func() { _ = ch.Close() }
 }
 
-// ---------------------------------------------------------------------------
-// HTTP handlers (demo / integration surface)
-// ---------------------------------------------------------------------------
-
 func handlePut(w http.ResponseWriter, r *http.Request, svc *server.Service) {
 	kindStr := r.URL.Query().Get("kind")
 	source := r.URL.Query().Get("source")
@@ -165,7 +162,7 @@ func handlePut(w http.ResponseWriter, r *http.Request, svc *server.Service) {
 	if source == "" {
 		source = "unknown"
 	}
-	data, err := io.ReadAll(io.LimitReader(r.Body, 64<<20)) // 64 MiB soft limit for unary
+	data, err := io.ReadAll(io.LimitReader(r.Body, 64<<20))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

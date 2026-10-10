@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/agentjetson/core/pkg/otel"
 	"github.com/agentjetson/voice-query-service/internal/clickhouse"
 	"github.com/agentjetson/voice-query-service/internal/config"
 	"github.com/agentjetson/voice-query-service/internal/mcp"
@@ -19,6 +20,17 @@ import (
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	shutdown, err := otel.Init(ctx, "voice-query-service")
+	if err != nil {
+		slog.Error("otel", "err", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdown(context.Background()) }()
+
 	cfg := config.Load()
 
 	ch, err := clickhouse.New(cfg)
@@ -75,12 +87,9 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           mux,
+		Handler:           otel.HTTPHandler("http.server", mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		<-ctx.Done()

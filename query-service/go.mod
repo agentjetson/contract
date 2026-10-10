@@ -6,7 +6,10 @@ go 1.26
 // Live ClickHouse via pkg/persistence (Conn + SELECTs on query_* views).
 // Do NOT call ApplySchema — schema is owned by core/seed/sql (make schema).
 
-require github.com/agentjetson/core/pkg/persistence v0.0.0
+require (
+	github.com/agentjetson/core/pkg/otel v0.0.0
+	github.com/agentjetson/core/pkg/persistence v0.0.0
+)
 
 require (
 	github.com/ClickHouse/ch-go v0.61.5 // indirect
@@ -28,3 +31,5 @@ require (
 )
 
 replace github.com/agentjetson/core/pkg/persistence => ../pkg/persistence
+
+replace github.com/agentjetson/core/pkg/otel => ../pkg/otel
