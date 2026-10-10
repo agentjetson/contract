@@ -4,8 +4,9 @@ FROM golang:1.26-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git ca-certificates
 
-# Shared persistence module first (replace path in go.mod points here).
+# Shared modules first (replace paths in go.mod point here).
 COPY pkg/persistence ./pkg/persistence
+COPY pkg/otel ./pkg/otel
 
 COPY object-storage/go.mod object-storage/go.sum ./object-storage/
 WORKDIR /src/object-storage

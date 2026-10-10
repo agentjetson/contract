@@ -8,6 +8,7 @@ FROM golang:1.26-bookworm AS builder
 WORKDIR /src
 
 COPY pkg/persistence /src/pkg/persistence
+COPY pkg/otel /src/pkg/otel
 COPY query-service /src/query-service
 
 WORKDIR /src/query-service

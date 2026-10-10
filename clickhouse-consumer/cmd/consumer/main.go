@@ -15,6 +15,7 @@ import (
 	audiov1 "github.com/agentjetson/core/gen/go/audio/v1"
 	detectionv1 "github.com/agentjetson/core/gen/go/detection/v1"
 	scenev1 "github.com/agentjetson/core/gen/go/scene/v1"
+	"github.com/agentjetson/core/pkg/otel"
 	"github.com/agentjetson/core/pkg/persistence"
 	"github.com/nats-io/nats.go"
 	"google.golang.org/protobuf/proto"
@@ -129,6 +130,17 @@ func decodeScene(data []byte, seq uint64) (persistence.SceneRow, error) {
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	shutdown, err := otel.Init(ctx, "clickhouse-consumer")
+	if err != nil {
+		slog.Error("otel", "err", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdown(context.Background()) }()
+
 	cfg := config.Load()
 
 	ch, err := persistence.Open(cfg.CH)
@@ -178,9 +190,6 @@ func main() {
 		subs[d.subject] = sub
 		slog.Info("subscribed", "subject", d.subject, "durable", d.durable)
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	var (
 		objBatch   []persistence.ObjectRow
@@ -243,7 +252,6 @@ func main() {
 		}
 
 		if failed {
-			// Re-deliver so nothing is silently dropped.
 			for _, m := range pendingAck {
 				_ = m.Nak()
 			}
@@ -265,7 +273,7 @@ func main() {
 			rows, err := decodeAlert(msg.Data, seq)
 			if err != nil {
 				slog.Warn("decode Alert", "err", err, "bytes", len(msg.Data))
-				_ = msg.Ack() // poison pill
+				_ = msg.Ack()
 				return
 			}
 			detBatch = append(detBatch, rows...)
