@@ -8,6 +8,11 @@
 #   CLICKHOUSE_HOST / PORT / USER / PASSWORD / DB
 #   NATS_URL
 #   OTEL_EXPORTER_OTLP_ENDPOINT (default otel-collector:4317)
+#
+# Observability (LGT):
+#   Grafana  http://localhost:3000  (admin/admin)
+#   Tempo    http://localhost:3200
+#   Loki     http://localhost:3100
 
 name: agentjetson-core
 
@@ -254,6 +259,47 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # --- LGT observability -----------------------------------------------------
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200"   # Tempo query API (Grafana)
+      # OTLP ports stay internal; only the collector talks to them.
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.1.1
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./observability/loki-config.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_DEFAULT_THEME: dark
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - tempo
+      - loki
+    restart: unless-stopped
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.104.0
     command: ["--config=/etc/otelcol/config.yaml"]
@@ -262,7 +308,14 @@ services:
     ports:
       - "4317:4317"
       - "4318:4318"
+    depends_on:
+      - tempo
+      - loki
+    restart: unless-stopped
 
 volumes:
   clickhouse-data:
   rustfs_data:
+  tempo-data:
+  loki-data:
+  grafana-data:

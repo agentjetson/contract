@@ -13,6 +13,7 @@ import (
 	commonv1 "github.com/agentjetson/core/gen/go/common/v1"
 	ingestv1 "github.com/agentjetson/core/gen/go/ingest/v1"
 	natsv1 "github.com/agentjetson/core/gen/go/nats/v1"
+	"github.com/agentjetson/core/pkg/otel"
 )
 
 // Ingest implements ingest.v1.IngestServiceServer.
@@ -49,7 +50,7 @@ func (s *Ingest) IngestAlert(ctx context.Context, req *ingestv1.IngestAlertReque
 		Subject: "cv.alert",
 	})
 	if err != nil {
-		slog.Error("nats publisher call failed", "rpc", "PublishAlert", "err", err)
+		slog.ErrorContext(ctx, "nats publisher call failed", "rpc", "PublishAlert", "err", err)
 		return nil, status.Errorf(codes.Internal, "nats publisher unavailable: %v", err)
 	}
 	if !pubResp.GetPublished() {
@@ -63,7 +64,7 @@ func (s *Ingest) IngestAlert(ctx context.Context, req *ingestv1.IngestAlertReque
 	}
 
 	a := req.GetAlert()
-	slog.Info("ingested alert",
+	slog.InfoContext(ctx, "ingested alert",
 		"frame", a.GetFrameId(),
 		"dets", len(a.GetDetections()),
 		"latency_ms", a.GetE2ELatencyMs(),
@@ -89,7 +90,7 @@ func (s *Ingest) IngestTranscript(ctx context.Context, req *ingestv1.IngestTrans
 		Subject:    "audio.transcript",
 	})
 	if err != nil {
-		slog.Error("nats publisher call failed", "rpc", "PublishTranscript", "err", err)
+		slog.ErrorContext(ctx, "nats publisher call failed", "rpc", "PublishTranscript", "err", err)
 		return nil, status.Errorf(codes.Internal, "nats publisher unavailable: %v", err)
 	}
 	if !pubResp.GetPublished() {
@@ -107,7 +108,7 @@ func (s *Ingest) IngestTranscript(ctx context.Context, req *ingestv1.IngestTrans
 	if len(text) > 80 {
 		text = text[:80]
 	}
-	slog.Info("ingested transcript",
+	slog.InfoContext(ctx, "ingested transcript",
 		"source", t.GetSource(),
 		"final", t.GetIsFinal(),
 		"latency_ms", t.GetE2ELatencyMs(),
@@ -134,7 +135,7 @@ func (s *Ingest) IngestObject(ctx context.Context, req *ingestv1.IngestObjectReq
 		Object: req.GetObject(),
 	})
 	if err != nil {
-		slog.Error("nats publisher call failed", "rpc", "PublishObject", "err", err)
+		slog.ErrorContext(ctx, "nats publisher call failed", "rpc", "PublishObject", "err", err)
 		return nil, status.Errorf(codes.Internal, "nats publisher unavailable: %v", err)
 	}
 	if !pubResp.GetPublished() {
@@ -148,7 +149,7 @@ func (s *Ingest) IngestObject(ctx context.Context, req *ingestv1.IngestObjectReq
 	}
 
 	o := req.GetObject()
-	slog.Info("ingested object",
+	slog.InfoContext(ctx, "ingested object",
 		"frame", o.GetFrameId(),
 		"track", o.GetTrackId(),
 		"class", o.GetClassName(),
@@ -174,7 +175,7 @@ func (s *Ingest) IngestResult(ctx context.Context, req *ingestv1.IngestResultReq
 		Result: req.GetResult(),
 	})
 	if err != nil {
-		slog.Error("nats publisher call failed", "rpc", "PublishResult", "err", err)
+		slog.ErrorContext(ctx, "nats publisher call failed", "rpc", "PublishResult", "err", err)
 		return nil, status.Errorf(codes.Internal, "nats publisher unavailable: %v", err)
 	}
 	if !pubResp.GetPublished() {
@@ -188,7 +189,7 @@ func (s *Ingest) IngestResult(ctx context.Context, req *ingestv1.IngestResultReq
 	}
 
 	r := req.GetResult()
-	slog.Info("ingested result",
+	slog.InfoContext(ctx, "ingested result",
 		"frame", r.GetFrameId(),
 		"track", r.GetTrackId(),
 		"cap", r.GetCapability(),
@@ -217,7 +218,7 @@ func (s *Ingest) IngestScene(ctx context.Context, req *ingestv1.IngestSceneReque
 		Scene: req.GetScene(),
 	})
 	if err != nil {
-		slog.Error("nats publisher call failed", "rpc", "PublishScene", "err", err)
+		slog.ErrorContext(ctx, "nats publisher call failed", "rpc", "PublishScene", "err", err)
 		return nil, status.Errorf(codes.Internal, "nats publisher unavailable: %v", err)
 	}
 	if !pubResp.GetPublished() {
@@ -231,7 +232,7 @@ func (s *Ingest) IngestScene(ctx context.Context, req *ingestv1.IngestSceneReque
 	}
 
 	sc := req.GetScene()
-	slog.Info("ingested scene",
+	slog.InfoContext(ctx, "ingested scene",
 		"level1", sc.GetLevel1(),
 		"subject", pubResp.GetSubject(),
 		"seq", pubResp.GetSequence(),
@@ -245,9 +246,11 @@ func (s *Ingest) IngestScene(ctx context.Context, req *ingestv1.IngestSceneReque
 var _ ingestv1.IngestServiceServer = (*Ingest)(nil)
 
 // DialPublisher creates an insecure gRPC client to NatsPublisherService.
+// Uses otel.GRPCDialOptions so W3C trace context propagates to the publisher.
 // Caller owns the connection lifecycle (Close via the returned *grpc.ClientConn).
 func DialPublisher(addr string) (*grpc.ClientConn, natsv1.NatsPublisherServiceClient, error) {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	opts := append(otel.GRPCDialOptions(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("dial nats-publisher at %s: %w", addr, err)
 	}
