@@ -1,39 +1,45 @@
 # ingest (Go)
 
-Edge → core gRPC ingress — Go port of `core/src/ingest`.
+Edge → core gRPC ingress **and** JetStream publisher — combined binary.
 
-Thin pass-through onto `nats.v1.NatsPublisherService`. Does **not** own a NATS
-connection; that lives in `nats-publisher`.
+On a single Orin the former `ingest` → `nats-publisher` gRPC hop was pure
+overhead. This service accepts the same `ingest.v1.IngestService` RPCs, owns
+the NATS connection, and publishes directly. It also registers
+`nats.v1.NatsPublisherService` on the same gRPC server so specialists that
+dial the publisher surface keep working.
 
-| RPC              | Forwards to              | Default subject (set by publisher) |
-|------------------|--------------------------|------------------------------------|
-| IngestAlert      | PublishAlert             | `cv.alert`                         |
-| IngestTranscript | PublishTranscript        | `audio.transcript`                 |
-| IngestObject     | PublishObject            | `cv.object.<class_name>`           |
-| IngestResult     | PublishResult            | `cv.result.<capability>`           |
-| IngestScene      | PublishScene             | `cv.scene.<level1>`                |
+The standalone `nats-publisher/` tree remains for independent scaling later.
 
-`IngestScene` is implemented here (the C++ binary did not yet).
+| RPC              | Publishes to (default subject) |
+|------------------|--------------------------------|
+| IngestAlert      | `cv.alert`                     |
+| IngestTranscript | `audio.transcript`             |
+| IngestObject     | `cv.object.<class_name>`       |
+| IngestResult     | `cv.result.<capability>`       |
+| IngestScene      | `cv.scene.<level1>`            |
 
 ## Env
 
-| Variable         | Default              | Role                                      |
-|------------------|----------------------|-------------------------------------------|
-| `GRPC_ADDR`      | `0.0.0.0:50052`      | Listen address for IngestService          |
-| `PUBLISHER_ADDR` | `localhost:50051`    | Dial address for NatsPublisherService     |
+| Variable           | Default                 | Role                                      |
+|--------------------|-------------------------|-------------------------------------------|
+| `GRPC_ADDR`        | `0.0.0.0:50052`         | Listen for IngestService + NatsPublisherService |
+| `NATS_URL`         | `nats://localhost:4222` | JetStream                                 |
+| `NATS_CLIENT_NAME` | `ingest`                | NATS client name                          |
+
+`PUBLISHER_ADDR` is no longer used.
 
 ## Build & run
 
 ```bash
 # from core root
-make generate          # produces gen/go (required)
+make generate
 cd ingest
 go mod tidy
 go run ./cmd/server
 
 # env
 GRPC_ADDR=0.0.0.0:50052
-PUBLISHER_ADDR=localhost:50051
+NATS_URL=nats://localhost:4222
 ```
 
 Docker (monorepo context):
@@ -41,13 +47,3 @@ Docker (monorepo context):
 ```bash
 docker build -f ingest/Dockerfile -t ingest-server .
 ```
-
-## Relation to core/
-
-After this lands:
-
-1. Remove C++ `ingest_server` binary / CMake target from `agentjetson/core`.
-2. Point core `docker-compose` `ingest` service at this image (or run it from
-   core compose).
-3. Edge clients (`object-classifier`, `scene-router`, `audio-client`, specialists)
-   keep calling the same gRPC surface on `:50052`.

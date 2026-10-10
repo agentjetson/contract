@@ -3,8 +3,9 @@ FROM golang:1.26-bookworm AS builder
 WORKDIR /src
 
 # Shared packages + generated stubs (monorepo context).
-COPY gen/go /src/gen/go
+COPY pkg/natsjs /src/pkg/natsjs
 COPY pkg/otel /src/pkg/otel
+COPY gen/go /src/gen/go
 COPY ingest /src/ingest
 
 WORKDIR /src/ingest

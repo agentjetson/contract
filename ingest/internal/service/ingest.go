@@ -5,26 +5,20 @@ import (
 	"fmt"
 	"log/slog"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
-
-	commonv1 "github.com/agentjetson/core/gen/go/common/v1"
 	ingestv1 "github.com/agentjetson/core/gen/go/ingest/v1"
 	natsv1 "github.com/agentjetson/core/gen/go/nats/v1"
-	"github.com/agentjetson/core/pkg/otel"
+	commonv1 "github.com/agentjetson/core/gen/go/common/v1"
 )
 
 // Ingest implements ingest.v1.IngestServiceServer.
-// Thin pass-through onto NatsPublisherService — edge → core ingress.
+// Publishes directly via the in-process Publisher (owns NATS) — no gRPC hop.
 type Ingest struct {
 	ingestv1.UnimplementedIngestServiceServer
-	nats natsv1.NatsPublisherServiceClient
+	pub *Publisher
 }
 
-func New(nats natsv1.NatsPublisherServiceClient) *Ingest {
-	return &Ingest{nats: nats}
+func NewIngest(pub *Publisher) *Ingest {
+	return &Ingest{pub: pub}
 }
 
 func formatSeq(seq uint64) string {
@@ -45,13 +39,15 @@ func (s *Ingest) IngestAlert(ctx context.Context, req *ingestv1.IngestAlertReque
 		return resp, nil
 	}
 
-	pubResp, err := s.nats.PublishAlert(ctx, &natsv1.PublishAlertRequest{
+	pubResp, err := s.pub.PublishAlert(ctx, &natsv1.PublishAlertRequest{
 		Alert:   req.GetAlert(),
 		Subject: "cv.alert",
 	})
 	if err != nil {
-		slog.ErrorContext(ctx, "nats publisher call failed", "rpc", "PublishAlert", "err", err)
-		return nil, status.Errorf(codes.Internal, "nats publisher unavailable: %v", err)
+		slog.ErrorContext(ctx, "publish failed", "rpc", "PublishAlert", "err", err)
+		resp.Accepted = false
+		resp.Error = domainErr("PUBLISH_FAILED", err.Error())
+		return resp, nil
 	}
 	if !pubResp.GetPublished() {
 		msg := "publish rejected"
@@ -85,13 +81,15 @@ func (s *Ingest) IngestTranscript(ctx context.Context, req *ingestv1.IngestTrans
 		return resp, nil
 	}
 
-	pubResp, err := s.nats.PublishTranscript(ctx, &natsv1.PublishTranscriptRequest{
+	pubResp, err := s.pub.PublishTranscript(ctx, &natsv1.PublishTranscriptRequest{
 		Transcript: req.GetTranscript(),
 		Subject:    "audio.transcript",
 	})
 	if err != nil {
-		slog.ErrorContext(ctx, "nats publisher call failed", "rpc", "PublishTranscript", "err", err)
-		return nil, status.Errorf(codes.Internal, "nats publisher unavailable: %v", err)
+		slog.ErrorContext(ctx, "publish failed", "rpc", "PublishTranscript", "err", err)
+		resp.Accepted = false
+		resp.Error = domainErr("PUBLISH_FAILED", err.Error())
+		return resp, nil
 	}
 	if !pubResp.GetPublished() {
 		msg := "publish rejected"
@@ -130,13 +128,14 @@ func (s *Ingest) IngestObject(ctx context.Context, req *ingestv1.IngestObjectReq
 		return resp, nil
 	}
 
-	// subject left empty → publisher derives cv.object.<class_name>
-	pubResp, err := s.nats.PublishObject(ctx, &natsv1.PublishObjectRequest{
+	pubResp, err := s.pub.PublishObject(ctx, &natsv1.PublishObjectRequest{
 		Object: req.GetObject(),
 	})
 	if err != nil {
-		slog.ErrorContext(ctx, "nats publisher call failed", "rpc", "PublishObject", "err", err)
-		return nil, status.Errorf(codes.Internal, "nats publisher unavailable: %v", err)
+		slog.ErrorContext(ctx, "publish failed", "rpc", "PublishObject", "err", err)
+		resp.Accepted = false
+		resp.Error = domainErr("PUBLISH_FAILED", err.Error())
+		return resp, nil
 	}
 	if !pubResp.GetPublished() {
 		msg := "publish rejected"
@@ -171,12 +170,14 @@ func (s *Ingest) IngestResult(ctx context.Context, req *ingestv1.IngestResultReq
 		return resp, nil
 	}
 
-	pubResp, err := s.nats.PublishResult(ctx, &natsv1.PublishResultRequest{
+	pubResp, err := s.pub.PublishResult(ctx, &natsv1.PublishResultRequest{
 		Result: req.GetResult(),
 	})
 	if err != nil {
-		slog.ErrorContext(ctx, "nats publisher call failed", "rpc", "PublishResult", "err", err)
-		return nil, status.Errorf(codes.Internal, "nats publisher unavailable: %v", err)
+		slog.ErrorContext(ctx, "publish failed", "rpc", "PublishResult", "err", err)
+		resp.Accepted = false
+		resp.Error = domainErr("PUBLISH_FAILED", err.Error())
+		return resp, nil
 	}
 	if !pubResp.GetPublished() {
 		msg := "publish rejected"
@@ -203,8 +204,6 @@ func (s *Ingest) IngestResult(ctx context.Context, req *ingestv1.IngestResultReq
 }
 
 // ---- IngestScene ----
-// Present in the proto; the C++ binary did not implement it yet.
-// Edge scene-router / temporal-classifier call this path.
 
 func (s *Ingest) IngestScene(ctx context.Context, req *ingestv1.IngestSceneRequest) (*ingestv1.IngestSceneResponse, error) {
 	resp := &ingestv1.IngestSceneResponse{}
@@ -214,12 +213,14 @@ func (s *Ingest) IngestScene(ctx context.Context, req *ingestv1.IngestSceneReque
 		return resp, nil
 	}
 
-	pubResp, err := s.nats.PublishScene(ctx, &natsv1.PublishSceneRequest{
+	pubResp, err := s.pub.PublishScene(ctx, &natsv1.PublishSceneRequest{
 		Scene: req.GetScene(),
 	})
 	if err != nil {
-		slog.ErrorContext(ctx, "nats publisher call failed", "rpc", "PublishScene", "err", err)
-		return nil, status.Errorf(codes.Internal, "nats publisher unavailable: %v", err)
+		slog.ErrorContext(ctx, "publish failed", "rpc", "PublishScene", "err", err)
+		resp.Accepted = false
+		resp.Error = domainErr("PUBLISH_FAILED", err.Error())
+		return resp, nil
 	}
 	if !pubResp.GetPublished() {
 		msg := "publish rejected"
@@ -242,17 +243,4 @@ func (s *Ingest) IngestScene(ctx context.Context, req *ingestv1.IngestSceneReque
 	return resp, nil
 }
 
-// Ensure the generated Unimplemented server is satisfied at compile time.
 var _ ingestv1.IngestServiceServer = (*Ingest)(nil)
-
-// DialPublisher creates an insecure gRPC client to NatsPublisherService.
-// Uses otel.GRPCDialOptions so W3C trace context propagates to the publisher.
-// Caller owns the connection lifecycle (Close via the returned *grpc.ClientConn).
-func DialPublisher(addr string) (*grpc.ClientConn, natsv1.NatsPublisherServiceClient, error) {
-	opts := append(otel.GRPCDialOptions(), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	conn, err := grpc.NewClient(addr, opts...)
-	if err != nil {
-		return nil, nil, fmt.Errorf("dial nats-publisher at %s: %w", addr, err)
-	}
-	return conn, natsv1.NewNatsPublisherServiceClient(conn), nil
-}
