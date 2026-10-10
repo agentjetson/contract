@@ -17,11 +17,11 @@ Scene-gate is policy/routing, not inference. No pixels, no ONNX. Taxonomy + prof
 ```
 edge C++                          core (Go)
 ────────                          ─────────
-camera / audio-client  ──frames──► (optional light notify — TBD)
-                     ──transcript─► scene-gate
+camera / audio-client  ──transcript─► scene-gate
+registered sources ──startup─────► EmitNow backend=profile
                                        │
                           EmitNow ─────┼──► IngestScene → cv.scene.*
-                          ForwardVisual│    (edge scene-router still runs unless skip_visual)
+                          ForwardVisual│    (edge scene-router unless SKIP_VISUAL)
                           Abstain ─────┘
 ```
 
@@ -32,109 +32,87 @@ camera / audio-client  ──frames──► (optional light notify — TBD)
 | Path | Role |
 |------|------|
 | `domain/taxonomy.yaml` | Authoritative L1→L2 + specialists |
-| `domain/camera_profiles.yaml` | Per-`source_id` profiles + audio_intents |
-| `TAXONOMY_PATH` / `CAMERA_PROFILES_PATH` | Env overrides |
+| `domain/camera_profiles.yaml` | Per-pattern profiles + audio_intents |
+| `domain/camera_sources.yaml` | **Registered source ids** for profile emit |
+| `TAXONOMY_PATH` / `CAMERA_PROFILES_PATH` / `CAMERA_SOURCES_PATH` | Env overrides |
 
-### Profile fields
+### Fixed-role profile emit
+
+List concrete units in `camera_sources.yaml`:
 
 ```yaml
-profiles:
-  - match: "front-*"
-    l1_prior: roadway
-    specialists_always: [alpr, speed, vehicle_attr]
-    specialists_allowed: [alpr, speed, vehicle_attr]
-    skip_visual: true
-    audio_primary: false
-    visual_abstain_threshold: 0.60
-    audio_confidence_threshold: 0.70
+sources:
+  - id: front-cam-01
+  - id: cabin-unit-01
 ```
 
-`audio_intents` map phrases → L2 (case-insensitive, first hit wins).
+On startup (when `EMIT_PROFILES=true`, default), for each id the gate runs **OnFrame**:
 
-### Source ID naming (critical)
+- Profile matches `skip_visual` + `l1_prior` → **EmitNow** (`backend=profile`, specialists from profile/taxonomy).
+- Otherwise log ForwardVisual/Abstain and skip publish.
 
-Profiles match on **`Transcript.source`** / camera `source_id` using exact or trailing-`*` patterns.
+Optional refresh: `PROFILE_REFRESH_MIN=15` re-emits on that interval (0 = startup only).
+
+Edge should still set `SKIP_VISUAL_SOURCES=front-*,cabin-*` so SigLIP does not run on those units.
+
+### Source ID naming
 
 | Deployment | Set `SOURCE` / source_id to | Profile match |
 |------------|----------------------------|---------------|
-| Officer body-cam | `bodycam-12`, `bodycam-unit-7` | `bodycam-*` |
-| Front plate cam | `front-cam-01` | `front-*` |
-| Cabin / driver | `cabin-cruiser-3` | `cabin-*` |
-| Dashcam outward | `dashcam-car-9` | `dashcam-*` |
+| Officer body-cam | `bodycam-12` | `bodycam-*` (audio path) |
+| Front plate cam | `front-cam-01` | `front-*` + list in camera_sources |
+| Cabin / driver | `cabin-unit-01` | `cabin-*` + list in camera_sources |
 
-If audio-client uses the default `SOURCE=mic`, **no profile matches** and audio intent never short-circuits. Body-cam deployments must set:
-
-```bash
-SOURCE=bodycam-12   # or bodycam-<unit-id>
-```
-
-Same id should be used by camera-connector for that unit so visual and audio correlate.
+Body-cam production: `SOURCE=bodycam-12` on audio-client (not `mic`).
 
 ---
 
 ## Behaviour
 
-### Production path (live service)
+1. **Startup / refresh** — profile SceneResults for registered fixed-role sources.
+2. **`audio.transcript`** — phrase → L2; high conf → EmitNow `backend=audio`.
+3. **CLI** — `--source-id front-cam-01` or `--emit-profiles` for bring-up without NATS.
 
-The long-running service **only** consumes `audio.transcript` (JetStream `AUDIO_EVENTS`).
-
-1. Resolve profile for `Transcript.source`.
-2. Match phrase → L2; if confidence ≥ profile threshold → **EmitNow** (`backend="audio"`).
-3. Else **ForwardVisual** (or **Abstain** if `audio_primary && skip_visual`).
-
-### Bring-up / CLI only (`--source-id`)
-
-```bash
-go run ./cmd/scene-gate --source-id front-cam-01
-go run ./cmd/scene-gate --source-id bodycam-12 --simulate-audio "initiating traffic stop"
-```
-
-`--source-id` without `--simulate-audio` runs **OnFrame** (profile prior + `skip_visual`). That path is **bring-up / test only**. There is no production frame side-channel yet, so fixed-role cameras (`front-*`, `cabin-*`) do **not** auto-emit profile SceneResults in the live loop.
-
-Until a camera registration / heartbeat notify exists:
-
-- Rely on **edge scene-router** honouring `SKIP_VISUAL_SOURCES` / profiles for fixed cams (see scene-router), **or**
-- Manually emit once at deploy with the CLI and treat it as a config smoke test.
-
-### Dual SceneResult
-
-If the gate EmitNows from audio **and** scene-router still runs vision on the same source, downstream may see two scenes (`backend=audio` vs `backend=siglip2`). Prefer edge skip for `skip_visual` sources; filter by backend/confidence if both appear.
+Dual scenes: if audio and visual both fire for the same source, prefer filtering by `backend` / confidence; fixed cams should not run visual at all.
 
 ---
 
 ## Run
 
 ```bash
-# With core docker-compose (NATS + ingest up)
+# Live (NATS + ingest + profile emit + audio)
 TAXONOMY_PATH=../domain/taxonomy.yaml \
 CAMERA_PROFILES_PATH=../domain/camera_profiles.yaml \
+CAMERA_SOURCES_PATH=../domain/camera_sources.yaml \
 NATS_URL=nats://localhost:4222 \
 INGEST_ADDR=localhost:50052 \
   go run ./cmd/scene-gate
 
-# Bring-up without live audio
+# Bring-up single source
 go run ./cmd/scene-gate --source-id front-cam-01
 go run ./cmd/scene-gate --source-id bodycam-12 --simulate-audio "initiating traffic stop"
-```
 
-Env:
+# Emit all registered profiles and exit (no NATS)
+go run ./cmd/scene-gate --emit-profiles
+```
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `NATS_URL` | `nats://localhost:4222` | JetStream |
-| `INGEST_ADDR` | `localhost:50052` | gRPC ingest for IngestScene |
-| `TAXONOMY_PATH` | `/config/taxonomy.yaml` | |
+| `EMIT_PROFILES` | `true` | Startup profile emit from camera_sources |
+| `PROFILE_REFRESH_MIN` | `0` | Minutes between re-emits; 0 = once |
+| `CAMERA_SOURCES_PATH` | `/config/camera_sources.yaml` | Registered source ids |
+| `NATS_URL` | `nats://localhost:4222` | |
+| `INGEST_ADDR` | `localhost:50052` | |
 | `CAMERA_PROFILES_PATH` | `/config/camera_profiles.yaml` | |
-| `AUDIO_SUBJECT` | `audio.transcript` | |
-| `STREAM_AUDIO` | `AUDIO_EVENTS` | |
+| `TAXONOMY_PATH` | `/config/taxonomy.yaml` | |
 
 ---
 
 ## Design principles
 
-1. Same taxonomy as scene-router / temporal-classifier — no divergent tables.
+1. Same taxonomy as scene-router / temporal-classifier.
 2. SceneResult remains the upstream situation contract.
 3. Specialists stay pure consumers.
-4. Fixed cameras stay cheap (skip visual on edge + profile prior).
-5. Body-cam leans on speech when the officer already announces the situation.
+4. Fixed cameras: skip visual on edge + profile scene from gate.
+5. Body-cam leans on speech when the officer announces the situation.
 6. `Transcript.source` / camera `source_id` must match profile patterns.

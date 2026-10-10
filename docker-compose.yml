@@ -87,9 +87,12 @@ services:
       INGEST_ADDR: ingest:50052
       TAXONOMY_PATH: /config/taxonomy.yaml
       CAMERA_PROFILES_PATH: /config/camera_profiles.yaml
+      CAMERA_SOURCES_PATH: /config/camera_sources.yaml
       STREAM_AUDIO: AUDIO_EVENTS
       AUDIO_SUBJECT: audio.transcript
       PUBLISH_VIA_INGEST: "true"
+      EMIT_PROFILES: "true"
+      # PROFILE_REFRESH_MIN: "15"   # optional re-emit; 0 = startup only
     depends_on:
       nats:
         condition: service_healthy

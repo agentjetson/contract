@@ -13,5 +13,6 @@ FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=builder /out/scene-gate /scene-gate
 COPY --from=builder /src/domain/taxonomy.yaml /config/taxonomy.yaml
 COPY --from=builder /src/domain/camera_profiles.yaml /config/camera_profiles.yaml
+COPY --from=builder /src/domain/camera_sources.yaml /config/camera_sources.yaml
 USER nonroot:nonroot
 ENTRYPOINT ["/scene-gate"]

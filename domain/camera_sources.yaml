@@ -1,0 +1,18 @@
+# Registered camera / source ids for scene-gate profile emit.
+# Fixed-role sources (skip_visual in camera_profiles.yaml) get a backend=profile
+# SceneResult at gate startup (and optional refresh). Body-cam / dashcam ids are
+# optional here — they usually rely on audio or visual paths instead.
+#
+# source id must match Transcript.source / camera SOURCE_ID conventions
+# (front-*, cabin-*, bodycam-*, dashcam-*).
+
+version: 1
+
+sources:
+  # Examples — replace with real unit ids in deployment
+  - id: front-cam-01
+    description: Roadside / plate camera example
+  - id: front-cam-02
+    description: Second fixed plate camera example
+  - id: cabin-unit-01
+    description: In-cabin driver-facing example
