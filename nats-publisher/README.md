@@ -1,8 +1,11 @@
-# nats-publisher (Go)
+# nats-publisher (Go) — optional standalone
 
-JetStream publish gRPC front-end — Go port of `core/src/nats_publisher`.
+JetStream publish gRPC front-end. **On single-Orin deployments the combined
+`ingest` binary owns NATS and registers `NatsPublisherService` on the same
+port** (`:50052`), so this process is not started by default compose.
 
-Owns the NATS / JetStream connection and exposes `nats.v1.NatsPublisherService`:
+Keep this tree when you need independent scaling (multi-node / separate
+publish plane). Protos and subjects are unchanged.
 
 | RPC               | Default subject              | Payload                        |
 |-------------------|------------------------------|--------------------------------|
@@ -20,32 +23,22 @@ On startup the service ensures:
 - **CV_ALERTS** → `cv.alert`
 - **AUDIO_EVENTS** → `audio.transcript` (non-fatal if already owned)
 
-Shared helpers live in `pkg/natsjs` so `clickhouse-consumer` (and aggregator) can reuse Connect / EnsureStream.
+Shared helpers live in `pkg/natsjs`.
 
-## Build & run
+## Build & run (standalone)
 
 ```bash
-# from core root
-make generate          # produces gen/go (required)
+make generate
 cd nats-publisher
 go mod tidy
 go run ./cmd/publisher
 
-# env
 NATS_URL=nats://localhost:4222
 GRPC_ADDR=0.0.0.0:50051
 ```
 
-Docker (monorepo context):
+Docker:
 
 ```bash
 docker build -f nats-publisher/Dockerfile -t nats-publisher .
 ```
-
-## Relation to core/
-
-After this lands:
-
-1. Remove C++ `nats_publisher` binary / CMake target from `agentjetson/core`.
-2. Point core `docker-compose` `nats-publisher` service at this image (or run it from core compose).
-3. Edge clients (`ingest_server`, specialists) keep calling the same gRPC surface.

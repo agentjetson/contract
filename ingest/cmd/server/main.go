@@ -1,7 +1,8 @@
-// Ingest server: edge → core gRPC ingress.
+// Ingest server: edge → core gRPC ingress + JetStream publisher.
 //
-// Go port of core/src/ingest. Thin pass-through onto NatsPublisherService;
-// does not own a NATS connection itself.
+// Combined binary: accepts IngestService RPCs and owns the NATS connection.
+// Also registers NatsPublisherService on the same gRPC server so specialists
+// that dial the publisher proto keep working without a second process.
 package main
 
 import (
@@ -13,8 +14,10 @@ import (
 	"syscall"
 
 	ingestv1 "github.com/agentjetson/core/gen/go/ingest/v1"
+	natsv1 "github.com/agentjetson/core/gen/go/nats/v1"
 	"github.com/agentjetson/core/ingest/internal/config"
 	"github.com/agentjetson/core/ingest/internal/service"
+	"github.com/agentjetson/core/pkg/natsjs"
 	"github.com/agentjetson/core/pkg/otel"
 	"google.golang.org/grpc"
 )
@@ -34,15 +37,21 @@ func main() {
 
 	cfg := config.Load()
 
-	conn, natsClient, err := service.DialPublisher(cfg.PublisherAddr)
+	nc, js, err := natsjs.Connect(cfg.NATSURL, cfg.ClientName)
 	if err != nil {
-		slog.Error("dial publisher", "addr", cfg.PublisherAddr, "err", err)
+		slog.Error("nats", "err", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
-	slog.Info("publisher connected", "addr", cfg.PublisherAddr)
+	defer nc.Close()
+	slog.Info("nats connected", "url", cfg.NATSURL, "client", cfg.ClientName)
 
-	svc := service.New(natsClient)
+	if err := natsjs.EnsureAllStreams(js, nil); err != nil {
+		slog.Error("ensure streams", "err", err)
+		os.Exit(1)
+	}
+
+	pub := service.NewPublisher(js)
+	ingestSvc := service.NewIngest(pub)
 
 	lis, err := net.Listen("tcp", cfg.GRPCAddr)
 	if err != nil {
@@ -51,7 +60,8 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer(otel.GRPCServerOption())
-	ingestv1.RegisterIngestServiceServer(grpcServer, svc)
+	ingestv1.RegisterIngestServiceServer(grpcServer, ingestSvc)
+	natsv1.RegisterNatsPublisherServiceServer(grpcServer, pub)
 
 	go func() {
 		<-ctx.Done()
@@ -59,7 +69,11 @@ func main() {
 		grpcServer.GracefulStop()
 	}()
 
-	slog.Info("Ingest grpc listening", "addr", cfg.GRPCAddr, "publisher", cfg.PublisherAddr)
+	slog.Info("Ingest+Publisher grpc listening",
+		"addr", cfg.GRPCAddr,
+		"nats", cfg.NATSURL,
+		"services", []string{"IngestService", "NatsPublisherService"},
+	)
 	if err := grpcServer.Serve(lis); err != nil {
 		slog.Error("grpc serve", "err", err)
 		os.Exit(1)

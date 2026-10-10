@@ -1,0 +1,53 @@
+# Orin / single-box override: host network for minimal latency between Go
+# services and NATS. Use with:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.orin.yml up -d
+#
+# Bind NATS JetStream store to a local SSD path by setting NATS_STORE_PATH,
+# e.g. NATS_STORE_PATH=/mnt/ssd/nats docker compose ... up -d
+#
+# Host network means published ports and container DNS names no longer apply;
+# services reach each other via localhost. Adjust NATS_URL / INGEST_ADDR /
+# CLICKHOUSE_HOST accordingly (defaults below).
+
+services:
+  nats:
+    network_mode: host
+    ports: []
+    volumes:
+      - ${NATS_STORE_PATH:-nats-data}:/data
+
+  clickhouse:
+    network_mode: host
+    ports: []
+
+  ingest:
+    network_mode: host
+    ports: []
+    environment:
+      NATS_URL: nats://127.0.0.1:4222
+      OTEL_EXPORTER_OTLP_ENDPOINT: 127.0.0.1:4317
+
+  scene-gate:
+    network_mode: host
+    environment:
+      NATS_URL: nats://127.0.0.1:4222
+      INGEST_ADDR: 127.0.0.1:50052
+      OTEL_EXPORTER_OTLP_ENDPOINT: 127.0.0.1:4317
+
+  aggregator:
+    network_mode: host
+    environment:
+      NATS_URL: nats://127.0.0.1:4222
+      OTEL_EXPORTER_OTLP_ENDPOINT: 127.0.0.1:4317
+
+  clickhouse-consumer:
+    network_mode: host
+    environment:
+      NATS_URL: nats://127.0.0.1:4222
+      CLICKHOUSE_HOST: 127.0.0.1
+      OTEL_EXPORTER_OTLP_ENDPOINT: 127.0.0.1:4317
+
+  otel-collector:
+    network_mode: host
+    ports: []

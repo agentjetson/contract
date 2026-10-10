@@ -6,16 +6,19 @@ import (
 	"time"
 )
 
-// Config is loaded from environment (same vars as the C++ ingest_server).
+// Config is loaded from environment.
+// Combined ingest owns NATS; PUBLISHER_ADDR is no longer required.
 type Config struct {
-	GRPCAddr      string // listen address for IngestService
-	PublisherAddr string // dial address for NatsPublisherService
+	GRPCAddr   string // listen address for IngestService (+ NatsPublisherService)
+	NATSURL    string
+	ClientName string
 }
 
 func Load() Config {
 	return Config{
-		GRPCAddr:      getenv("GRPC_ADDR", "0.0.0.0:50052"),
-		PublisherAddr: getenv("PUBLISHER_ADDR", "localhost:50051"),
+		GRPCAddr:   getenv("GRPC_ADDR", "0.0.0.0:50052"),
+		NATSURL:    getenv("NATS_URL", "nats://localhost:4222"),
+		ClientName: getenv("NATS_CLIENT_NAME", "ingest"),
 	}
 }
 
@@ -26,7 +29,6 @@ func getenv(k, def string) string {
 	return def
 }
 
-// helpers kept for symmetry with sibling services
 func getenvInt(k string, def int) int {
 	if v := os.Getenv(k); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
