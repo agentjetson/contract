@@ -67,13 +67,14 @@ services:
     # JetStream file store on volume (bind-mount to local SSD on Orin in production).
     # Modest max_mem / max_file keep the process small on edge hardware.
     command:
+      - "nats-server"
       - "-js"
       - "-m"
       - "8222"
-      - "-sd"
-      - "/data"
-      - "--max_payload"
-      - "8MB"
+      # - "-sd"
+      # - "/data"
+      # - "--max_payload"
+      # - "8MB"
     ports:
       - "4222:4222"
       - "8222:8222"
