@@ -8,10 +8,9 @@ import (
 	"github.com/nats-io/nats.go"
 	"google.golang.org/protobuf/proto"
 
-	// Generated packages — produced by `make generate` at core root.
-	// Paths match option go_package in the protos.
 	commonv1 "github.com/agentjetson/core/gen/go/common/v1"
 	natsv1 "github.com/agentjetson/core/gen/go/nats/v1"
+	"github.com/agentjetson/core/pkg/otel"
 )
 
 // Publisher implements nats.v1.NatsPublisherServiceServer.
@@ -29,9 +28,19 @@ const (
 	defaultTranscriptSubject = "audio.transcript"
 )
 
+// publish injects W3C trace context into NATS headers and publishes via JetStream.
 func (p *Publisher) publish(ctx context.Context, subject string, payload []byte) (seq uint64, err error) {
-	ack, err := p.js.Publish(subject, payload, nats.Context(ctx))
+	msg := &nats.Msg{
+		Subject: subject,
+		Data:    payload,
+		Header:  make(nats.Header),
+	}
+	ctx, span := otel.StartProducerSpan(ctx, "nats-publisher", "nats.publish "+subject, msg)
+	defer span.End()
+
+	ack, err := p.js.PublishMsg(msg, nats.Context(ctx))
 	if err != nil {
+		otel.RecordError(span, err)
 		return 0, err
 	}
 	if ack != nil {
@@ -43,8 +52,6 @@ func (p *Publisher) publish(ctx context.Context, subject string, payload []byte)
 func setErr(code, msg string) *commonv1.DomainError {
 	return &commonv1.DomainError{Code: code, Message: msg}
 }
-
-// ---- PublishAlert ----
 
 func (p *Publisher) PublishAlert(ctx context.Context, req *natsv1.PublishAlertRequest) (*natsv1.PublishAlertResponse, error) {
 	resp := &natsv1.PublishAlertResponse{}
@@ -65,12 +72,12 @@ func (p *Publisher) PublishAlert(ctx context.Context, req *natsv1.PublishAlertRe
 	}
 	seq, err := p.publish(ctx, subject, payload)
 	if err != nil {
-		slog.Error("publish alert", "subject", subject, "err", err)
+		slog.ErrorContext(ctx, "publish alert", "subject", subject, "err", err)
 		resp.Published = false
 		resp.Error = setErr("PUBLISH_FAILED", err.Error())
 		return resp, nil
 	}
-	slog.Info("published alert",
+	slog.InfoContext(ctx, "published alert",
 		"subject", subject, "seq", seq,
 		"frame", req.GetAlert().GetFrameId(),
 		"dets", len(req.GetAlert().GetDetections()),
@@ -81,8 +88,6 @@ func (p *Publisher) PublishAlert(ctx context.Context, req *natsv1.PublishAlertRe
 	resp.Sequence = seq
 	return resp, nil
 }
-
-// ---- PublishTranscript ----
 
 func (p *Publisher) PublishTranscript(ctx context.Context, req *natsv1.PublishTranscriptRequest) (*natsv1.PublishTranscriptResponse, error) {
 	resp := &natsv1.PublishTranscriptResponse{}
@@ -103,7 +108,7 @@ func (p *Publisher) PublishTranscript(ctx context.Context, req *natsv1.PublishTr
 	}
 	seq, err := p.publish(ctx, subject, payload)
 	if err != nil {
-		slog.Error("publish transcript", "subject", subject, "err", err)
+		slog.ErrorContext(ctx, "publish transcript", "subject", subject, "err", err)
 		resp.Published = false
 		resp.Error = setErr("PUBLISH_FAILED", err.Error())
 		return resp, nil
@@ -113,8 +118,6 @@ func (p *Publisher) PublishTranscript(ctx context.Context, req *natsv1.PublishTr
 	resp.Sequence = seq
 	return resp, nil
 }
-
-// ---- PublishObject ----
 
 func (p *Publisher) PublishObject(ctx context.Context, req *natsv1.PublishObjectRequest) (*natsv1.PublishObjectResponse, error) {
 	resp := &natsv1.PublishObjectResponse{}
@@ -140,12 +143,12 @@ func (p *Publisher) PublishObject(ctx context.Context, req *natsv1.PublishObject
 	}
 	seq, err := p.publish(ctx, subject, payload)
 	if err != nil {
-		slog.Error("publish object", "subject", subject, "err", err)
+		slog.ErrorContext(ctx, "publish object", "subject", subject, "err", err)
 		resp.Published = false
 		resp.Error = setErr("PUBLISH_FAILED", err.Error())
 		return resp, nil
 	}
-	slog.Info("published object",
+	slog.InfoContext(ctx, "published object",
 		"subject", subject, "seq", seq,
 		"frame", obj.GetFrameId(), "track", obj.GetTrackId(),
 		"class", obj.GetClassName(), "crop_bytes", len(obj.GetCropJpeg()),
@@ -155,8 +158,6 @@ func (p *Publisher) PublishObject(ctx context.Context, req *natsv1.PublishObject
 	resp.Sequence = seq
 	return resp, nil
 }
-
-// ---- PublishResult ----
 
 func (p *Publisher) PublishResult(ctx context.Context, req *natsv1.PublishResultRequest) (*natsv1.PublishResultResponse, error) {
 	resp := &natsv1.PublishResultResponse{}
@@ -182,12 +183,12 @@ func (p *Publisher) PublishResult(ctx context.Context, req *natsv1.PublishResult
 	}
 	seq, err := p.publish(ctx, subject, payload)
 	if err != nil {
-		slog.Error("publish result", "subject", subject, "err", err)
+		slog.ErrorContext(ctx, "publish result", "subject", subject, "err", err)
 		resp.Published = false
 		resp.Error = setErr("PUBLISH_FAILED", err.Error())
 		return resp, nil
 	}
-	slog.Info("published result",
+	slog.InfoContext(ctx, "published result",
 		"subject", subject, "seq", seq,
 		"frame", res.GetFrameId(), "track", res.GetTrackId(),
 		"cap", res.GetCapability(), "ocr", res.GetOcrText(),
@@ -197,8 +198,6 @@ func (p *Publisher) PublishResult(ctx context.Context, req *natsv1.PublishResult
 	resp.Sequence = seq
 	return resp, nil
 }
-
-// ---- PublishScene ----
 
 func (p *Publisher) PublishScene(ctx context.Context, req *natsv1.PublishSceneRequest) (*natsv1.PublishSceneResponse, error) {
 	resp := &natsv1.PublishSceneResponse{}
@@ -210,7 +209,6 @@ func (p *Publisher) PublishScene(ctx context.Context, req *natsv1.PublishSceneRe
 	}
 	subject := req.GetSubject()
 	if subject == "" {
-		// Prefer level1 when present; fall back to "result" for refined scenes.
 		lvl := sc.GetLevel1()
 		if lvl == "" {
 			lvl = "result"
@@ -225,12 +223,12 @@ func (p *Publisher) PublishScene(ctx context.Context, req *natsv1.PublishSceneRe
 	}
 	seq, err := p.publish(ctx, subject, payload)
 	if err != nil {
-		slog.Error("publish scene", "subject", subject, "err", err)
+		slog.ErrorContext(ctx, "publish scene", "subject", subject, "err", err)
 		resp.Published = false
 		resp.Error = setErr("PUBLISH_FAILED", err.Error())
 		return resp, nil
 	}
-	slog.Info("published scene",
+	slog.InfoContext(ctx, "published scene",
 		"subject", subject, "seq", seq,
 		"level1", sc.GetLevel1(), "bytes", len(payload),
 	)
@@ -240,8 +238,6 @@ func (p *Publisher) PublishScene(ctx context.Context, req *natsv1.PublishSceneRe
 	return resp, nil
 }
 
-// Ensure the generated Unimplemented server is satisfied at compile time.
 var _ natsv1.NatsPublisherServiceServer = (*Publisher)(nil)
 
-// Compile-time sanity: unused import guard if gen is missing during early bootstrap.
 var _ = fmt.Sprintf

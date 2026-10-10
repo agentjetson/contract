@@ -350,7 +350,9 @@ func main() {
 				continue
 			}
 			for _, m := range msgs {
+				_, span := otel.StartConsumerSpan(context.Background(), "clickhouse-consumer", "process.message", m)
 				handle(m.Subject, m)
+				span.End()
 			}
 		}
 

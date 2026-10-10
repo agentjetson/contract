@@ -165,7 +165,9 @@ func main() {
 					slog.Warn("fetch source", "err", err)
 				} else {
 					for _, msg := range msgs {
-						handleSourceEvent(ctx, engine, publisher, live, msg.Data, msg.Subject)
+						mctx, span := otel.StartConsumerSpan(context.Background(), "scene-gate", "process.source", msg)
+						handleSourceEvent(mctx, engine, publisher, live, msg.Data, msg.Subject)
+						span.End()
 						_ = msg.Ack()
 					}
 				}
@@ -176,7 +178,9 @@ func main() {
 				continue
 			}
 			for _, msg := range msgs {
-				handleTranscript(ctx, engine, publisher, msg.Data)
+				mctx, span := otel.StartConsumerSpan(context.Background(), "scene-gate", "process.transcript", msg)
+				handleTranscript(mctx, engine, publisher, msg.Data)
+				span.End()
 				_ = msg.Ack()
 			}
 		}

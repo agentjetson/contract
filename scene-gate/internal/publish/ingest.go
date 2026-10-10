@@ -12,6 +12,7 @@ import (
 
 	ingestv1 "github.com/agentjetson/core/gen/go/ingest/v1"
 	scenev1 "github.com/agentjetson/core/gen/go/scene/v1"
+	"github.com/agentjetson/core/pkg/otel"
 	"github.com/agentjetson/core/scene-gate/internal/decision"
 )
 
@@ -22,7 +23,8 @@ type IngestClient struct {
 }
 
 func DialIngest(addr string) (*IngestClient, error) {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	opts := append(otel.GRPCDialOptions(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("dial ingest %s: %w", addr, err)
 	}
@@ -44,7 +46,7 @@ func (c *IngestClient) PublishScene(ctx context.Context, r decision.Result) erro
 		return nil
 	}
 	scene := &scenev1.SceneResult{
-		FrameId:           0, // gate has no frame yet; edge may attach later
+		FrameId:           0,
 		Timestamp:         timestamppb.New(time.Now().UTC()),
 		Source:            r.SourceID,
 		Level1:            r.L1,
@@ -67,7 +69,7 @@ func (c *IngestClient) PublishScene(ctx context.Context, r decision.Result) erro
 		}
 		return fmt.Errorf("IngestScene not accepted: %s", msg)
 	}
-	slog.Info("emitted SceneResult",
+	slog.InfoContext(ctx, "emitted SceneResult",
 		"source", r.SourceID,
 		"l1", r.L1,
 		"l2", r.L2,

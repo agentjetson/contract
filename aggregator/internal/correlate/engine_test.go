@@ -1,6 +1,7 @@
 package correlate
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -35,7 +36,7 @@ func TestCorrelateObjectThenALPR(t *testing.T) {
 		mu        sync.Mutex
 		published [][]byte
 	)
-	publish := func(_ string, data []byte) error {
+	publish := func(_ context.Context, _ string, data []byte) error {
 		mu.Lock()
 		defer mu.Unlock()
 		published = append(published, append([]byte(nil), data...))
@@ -54,7 +55,7 @@ func TestCorrelateObjectThenALPR(t *testing.T) {
 		Box:        &detectionv1.BoundingBox{X1: 1, Y1: 2, X2: 3, Y2: 4},
 	}
 	objBytes, _ := proto.Marshal(obj)
-	e.OnObject(objBytes)
+	e.OnObject(context.Background(), objBytes)
 
 	mu.Lock()
 	n := len(published)
@@ -75,7 +76,7 @@ func TestCorrelateObjectThenALPR(t *testing.T) {
 		PlateBox:      &detectionv1.BoundingBox{X1: 10, Y1: 20, X2: 30, Y2: 40},
 	}
 	resBytes, _ := proto.Marshal(res)
-	e.OnResult(resBytes)
+	e.OnResult(context.Background(), resBytes)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -97,11 +98,10 @@ func TestCorrelateObjectThenALPR(t *testing.T) {
 
 func TestEmitOnTimeoutWithoutALPR(t *testing.T) {
 	var published int
-	publish := func(_ string, _ []byte) error {
+	publish := func(_ context.Context, _ string, _ []byte) error {
 		published++
 		return nil
 	}
-	// Very short emit timeout so Tick fires immediately.
 	e := New(DefaultWatchlist(), 1*time.Millisecond, 100*time.Millisecond, publish)
 	obj := &detectionv1.ObjectEnvelope{
 		FrameId:    1,
@@ -111,7 +111,7 @@ func TestEmitOnTimeoutWithoutALPR(t *testing.T) {
 		TrackId:    3,
 	}
 	objBytes, _ := proto.Marshal(obj)
-	e.OnObject(objBytes)
+	e.OnObject(context.Background(), objBytes)
 	time.Sleep(5 * time.Millisecond)
 	e.Tick()
 	if published != 1 {
@@ -121,7 +121,7 @@ func TestEmitOnTimeoutWithoutALPR(t *testing.T) {
 
 func TestIgnoreNonALPRResult(t *testing.T) {
 	var published int
-	e := New(DefaultWatchlist(), time.Second, time.Second, func(_ string, _ []byte) error {
+	e := New(DefaultWatchlist(), time.Second, time.Second, func(_ context.Context, _ string, _ []byte) error {
 		published++
 		return nil
 	})
@@ -131,7 +131,7 @@ func TestIgnoreNonALPRResult(t *testing.T) {
 		TrackId:    1,
 	}
 	b, _ := proto.Marshal(res)
-	e.OnResult(b)
+	e.OnResult(context.Background(), b)
 	if published != 0 {
 		t.Fatalf("non-alpr should not emit, got %d", published)
 	}

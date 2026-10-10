@@ -3,6 +3,7 @@ module github.com/agentjetson/core/pkg/otel
 go 1.26
 
 require (
+	github.com/nats-io/nats.go v1.37.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.54.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.54.0
 	go.opentelemetry.io/otel v1.29.0

@@ -1,8 +1,5 @@
 // Aggregator: correlates ObjectEnvelopes + CapabilityResults by
 // (frame_id, track_id), applies watchlist, emits final Alert to cv.alert.
-//
-// Go port of core/src/aggregator/main.cpp. Policy / watchlist / evidence
-// assembly lives here — out of the recorder and out of individual specialists.
 package main
 
 import (
@@ -22,8 +19,6 @@ import (
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
-
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -47,7 +42,6 @@ func main() {
 		slog.Error("stream", "name", cfg.StreamEvents, "err", err)
 		os.Exit(1)
 	}
-	// Alerts stream is owned by nats_publisher; we only publish.
 	if err := natsjs.WaitStream(js, cfg.StreamAlerts, 30*time.Second); err != nil {
 		slog.Warn("stream alerts not ready yet — publishes may fail until nats-publisher starts",
 			"stream", cfg.StreamAlerts, "err", err)
@@ -67,8 +61,14 @@ func main() {
 	}
 	defer resSub.Close()
 
-	publish := func(subject string, data []byte) error {
-		_, err := js.Publish(subject, data)
+	publish := func(pctx context.Context, subject string, data []byte) error {
+		msg := &nats.Msg{Subject: subject, Data: data, Header: make(nats.Header)}
+		pctx, span := otel.StartProducerSpan(pctx, "aggregator", "nats.publish "+subject, msg)
+		defer span.End()
+		_, err := js.PublishMsg(msg, nats.Context(pctx))
+		if err != nil {
+			otel.RecordError(span, err)
+		}
 		return err
 	}
 
@@ -99,17 +99,19 @@ func main() {
 		case <-ticker.C:
 			engine.Tick()
 		default:
-			// Sequential drains; Fetch blocks up to FetchTimeout each,
-			// so this is not a tight spin.
 			drain(objSub, cfg.FetchBatch, cfg.FetchTimeout, func(msg *nats.Msg) {
+				mctx, span := otel.StartConsumerSpan(context.Background(), "aggregator", "process.object", msg)
+				defer span.End()
 				if strings.HasPrefix(msg.Subject, "cv.object.") {
-					engine.OnObject(msg.Data)
+					engine.OnObject(mctx, msg.Data)
 				}
 				_ = msg.Ack()
 			})
 			drain(resSub, cfg.FetchBatch, cfg.FetchTimeout, func(msg *nats.Msg) {
+				mctx, span := otel.StartConsumerSpan(context.Background(), "aggregator", "process.result", msg)
+				defer span.End()
 				if strings.HasPrefix(msg.Subject, "cv.result.") {
-					engine.OnResult(msg.Data)
+					engine.OnResult(mctx, msg.Data)
 				}
 				_ = msg.Ack()
 			})

@@ -1,6 +1,7 @@
 package correlate
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -9,6 +10,8 @@ import (
 	"time"
 
 	detectionv1 "github.com/agentjetson/core/gen/go/detection/v1"
+	"github.com/agentjetson/core/pkg/otel"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -68,6 +71,9 @@ type pendingObject struct {
 	plateBox *detectionv1.BoundingBox
 	hasALPR  bool
 	created  time.Time
+	// parentSC is the remote span from the latest contributing NATS message
+	// so emit.alert can continue the same trace_id.
+	parentSC trace.SpanContext
 }
 
 // Engine correlates ObjectEnvelope + CapabilityResult by (frame_id, track_id)
@@ -78,11 +84,11 @@ type Engine struct {
 	watchlist  []WatchEntry
 	emitAfter  time.Duration
 	pruneAfter time.Duration
-	publish    func(subject string, data []byte) error
+	publish    func(ctx context.Context, subject string, data []byte) error
 }
 
 // New builds an Engine. publish is called with subject "cv.alert" and protobuf bytes.
-func New(watchlist []WatchEntry, emitAfter, pruneAfter time.Duration, publish func(subject string, data []byte) error) *Engine {
+func New(watchlist []WatchEntry, emitAfter, pruneAfter time.Duration, publish func(ctx context.Context, subject string, data []byte) error) *Engine {
 	return &Engine{
 		pending:    make(map[trackKey]*pendingObject),
 		watchlist:  watchlist,
@@ -92,14 +98,16 @@ func New(watchlist []WatchEntry, emitAfter, pruneAfter time.Duration, publish fu
 	}
 }
 
-// OnObject handles a cv.object.* message body.
-func (e *Engine) OnObject(data []byte) {
+// OnObject handles a cv.object.* message body. ctx should carry the extracted
+// NATS span (consumer span) so emit can join the upstream trace.
+func (e *Engine) OnObject(ctx context.Context, data []byte) {
 	var obj detectionv1.ObjectEnvelope
 	if err := proto.Unmarshal(data, &obj); err != nil {
-		slog.Warn("decode ObjectEnvelope", "err", err, "bytes", len(data))
+		slog.WarnContext(ctx, "decode ObjectEnvelope", "err", err, "bytes", len(data))
 		return
 	}
 	key := trackKey{FrameID: obj.FrameId, TrackID: obj.TrackId}
+	sc := otel.SpanFromContext(ctx)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	p, ok := e.pending[key]
@@ -109,22 +117,26 @@ func (e *Engine) OnObject(data []byte) {
 	}
 	p.obj = &obj
 	p.created = time.Now()
+	if sc.IsValid() {
+		p.parentSC = sc
+	}
 	if p.hasALPR {
 		e.emitLocked(key, p)
 	}
 }
 
 // OnResult handles a cv.result.* message body (currently ALPR).
-func (e *Engine) OnResult(data []byte) {
+func (e *Engine) OnResult(ctx context.Context, data []byte) {
 	var res detectionv1.CapabilityResult
 	if err := proto.Unmarshal(data, &res); err != nil {
-		slog.Warn("decode CapabilityResult", "err", err, "bytes", len(data))
+		slog.WarnContext(ctx, "decode CapabilityResult", "err", err, "bytes", len(data))
 		return
 	}
 	if res.Capability != "alpr" {
 		return
 	}
 	key := trackKey{FrameID: res.FrameId, TrackID: res.TrackId}
+	sc := otel.SpanFromContext(ctx)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	p, ok := e.pending[key]
@@ -137,6 +149,9 @@ func (e *Engine) OnResult(data []byte) {
 	p.plateBox = res.PlateBox
 	p.hasALPR = true
 	p.created = time.Now()
+	if sc.IsValid() {
+		p.parentSC = sc
+	}
 	if p.obj != nil && p.obj.FrameId != 0 {
 		e.emitLocked(key, p)
 	}
@@ -171,10 +186,18 @@ func (e *Engine) emitLocked(key trackKey, p *pendingObject) {
 		delete(e.pending, key)
 		return
 	}
-	if err := e.publish("cv.alert", payload); err != nil {
-		slog.Warn("publish alert", "err", err)
+
+	ctx := otel.ContextWithRemote(context.Background(), p.parentSC)
+	ctx, span := otel.Tracer("aggregator").Start(ctx, "emit.alert",
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
+	defer span.End()
+
+	if err := e.publish(ctx, "cv.alert", payload); err != nil {
+		otel.RecordError(span, err)
+		slog.WarnContext(ctx, "publish alert", "err", err)
 	} else {
-		slog.Info("ALERT",
+		slog.InfoContext(ctx, "ALERT",
 			"frame", alert.FrameId,
 			"track", p.obj.TrackId,
 			"class", p.obj.ClassName,
