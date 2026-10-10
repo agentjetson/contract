@@ -36,8 +36,13 @@ import (
 // Init configures the global TracerProvider and TextMapPropagator.
 // serviceName is used when OTEL_SERVICE_NAME is unset.
 // The returned shutdown flushes exporters; call it on process exit.
+//
+// Init also installs SetupLogging() so slog records include trace_id/span_id
+// when the call uses a context that carries an active span.
 func Init(ctx context.Context, serviceName string) (shutdown func(context.Context) error, err error) {
 	noop := func(context.Context) error { return nil }
+
+	SetupLogging()
 
 	if disabled() {
 		slog.Info("otel disabled (OTEL_SDK_DISABLED)")
@@ -114,6 +119,11 @@ func Init(ctx context.Context, serviceName string) (shutdown func(context.Contex
 // Tracer returns a named tracer from the global provider.
 func Tracer(name string) trace.Tracer {
 	return otel.Tracer(name)
+}
+
+// StartSpan is a convenience wrapper around Tracer(name).Start.
+func StartSpan(ctx context.Context, tracerName, spanName string) (context.Context, trace.Span) {
+	return Tracer(tracerName).Start(ctx, spanName)
 }
 
 // GRPCServerOption returns a grpc.ServerOption that enables OTEL stats

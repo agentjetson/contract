@@ -10,22 +10,40 @@ processors:
   batch:
     timeout: 5s
     send_batch_size: 512
+  # Ensure resource.service.name is present for Loki labels / Tempo service graph.
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: local
+        action: upsert
 
 exporters:
   debug:
-    verbosity: detailed
+    verbosity: basic
+
+  # Traces → Tempo (OTLP gRPC on Tempo's internal 4317).
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Logs → Loki native OTLP HTTP endpoint.
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [debug]
+      processors: [resource, batch]
+      exporters: [otlp/tempo, debug]
     metrics:
       receivers: [otlp]
-      processors: [batch]
+      processors: [resource, batch]
       exporters: [debug]
     logs:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [debug]
+      processors: [resource, batch]
+      exporters: [otlphttp/loki, debug]
