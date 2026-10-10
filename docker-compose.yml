@@ -77,6 +77,26 @@ services:
       - "50052:50052"
     restart: unless-stopped
 
+  # Per-camera decision gate: profile short-circuit + audio intent → SceneResult
+  scene-gate:
+    build:
+      context: .
+      dockerfile: scene-gate/Dockerfile
+    environment:
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      INGEST_ADDR: ingest:50052
+      TAXONOMY_PATH: /config/taxonomy.yaml
+      CAMERA_PROFILES_PATH: /config/camera_profiles.yaml
+      STREAM_AUDIO: AUDIO_EVENTS
+      AUDIO_SUBJECT: audio.transcript
+      PUBLISH_VIA_INGEST: "true"
+    depends_on:
+      nats:
+        condition: service_healthy
+      ingest:
+        condition: service_started
+    restart: unless-stopped
+
   # Pure NATS correlator — durables agg-objects / agg-results on CV_EVENTS
   aggregator:
     build:
