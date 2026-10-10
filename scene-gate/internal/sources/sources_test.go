@@ -1,9 +1,9 @@
 package sources
 
 import (
-	os
+	"os"
 	"path/filepath"
-	testing
+	"testing"
 )
 
 func TestLoad(t *testing.T) {
